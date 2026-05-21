@@ -1,0 +1,14 @@
+@UniConnect.Api_HostAddress = http://localhost:5000
+
+### Health
+GET {{UniConnect.Api_HostAddress}}/api/health
+Accept: application/json
+
+### Login (demo fleet operator)
+POST {{UniConnect.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "fleet@demo.local",
+  "password": "Demo123!"
+}
