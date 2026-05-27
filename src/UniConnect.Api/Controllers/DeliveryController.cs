@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using UniConnect.Application.DTOs;
 using UniConnect.Delivery.DTOs;
 using UniConnect.Delivery.Enums;
 using UniConnect.Delivery.Interfaces;
@@ -17,37 +16,29 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
     public async Task<ActionResult<DeliveryDashboardDto>> GetDashboard(CancellationToken ct) =>
         Ok(await deliveryService.GetDashboardAsync(ct));
 
-    [HttpGet("fleets")]
-    public async Task<ActionResult<IReadOnlyList<FleetDto>>> GetFleets(CancellationToken ct) =>
-        Ok(await deliveryService.GetFleetsAsync(ct));
+    [HttpGet("tenants/{tenantId:guid}/business-accounts")]
+    public async Task<ActionResult<IReadOnlyList<BusinessAccountDto>>> GetBusinessAccounts(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetBusinessAccountsAsync(tenantId, ct));
 
-    [HttpPost("fleets")]
-    public async Task<ActionResult<FleetDto>> CreateFleet([FromBody] CreateFleetRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateFleetAsync(request.Name, request.Slug, ct));
+    [HttpPost("tenants/{tenantId:guid}/business-accounts")]
+    public async Task<ActionResult<BusinessAccountDto>> CreateBusinessAccount(Guid tenantId, [FromBody] CreateBusinessAccountRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.CreateBusinessAccountAsync(tenantId, request, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/business-accounts")]
-    public async Task<ActionResult<IReadOnlyList<BusinessAccountDto>>> GetBusinessAccounts(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetBusinessAccountsAsync(fleetId, ct));
+    [HttpGet("tenants/{tenantId:guid}/orders")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryOrderDto>>> GetOrders(Guid tenantId, [FromQuery] DeliveryChannel? channel, CancellationToken ct) =>
+        Ok(await deliveryService.GetOrdersAsync(tenantId, channel, ct));
 
-    [HttpPost("fleets/{fleetId:guid}/business-accounts")]
-    public async Task<ActionResult<BusinessAccountDto>> CreateBusinessAccount(Guid fleetId, [FromBody] CreateBusinessAccountRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateBusinessAccountAsync(fleetId, request, ct));
+    [HttpPost("tenants/{tenantId:guid}/orders")]
+    public async Task<ActionResult<DeliveryOrderDto>> CreateOrder(Guid tenantId, [FromBody] CreateDeliveryOrderRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.CreateOrderAsync(tenantId, request, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/orders")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryOrderDto>>> GetOrders(Guid fleetId, [FromQuery] DeliveryChannel? channel, CancellationToken ct) =>
-        Ok(await deliveryService.GetOrdersAsync(fleetId, channel, ct));
+    [HttpGet("tenants/{tenantId:guid}/vehicles")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryVehicleDto>>> GetVehicles(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetVehiclesAsync(tenantId, ct));
 
-    [HttpPost("fleets/{fleetId:guid}/orders")]
-    public async Task<ActionResult<DeliveryOrderDto>> CreateOrder(Guid fleetId, [FromBody] CreateDeliveryOrderRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateOrderAsync(fleetId, request, ct));
-
-    [HttpGet("fleets/{fleetId:guid}/vehicles")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryVehicleDto>>> GetVehicles(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetVehiclesAsync(fleetId, ct));
-
-    [HttpGet("fleets/{fleetId:guid}/tracking")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryTrackingDto>>> GetTracking(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetTrackingAsync(fleetId, ct));
+    [HttpGet("tenants/{tenantId:guid}/tracking")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryTrackingDto>>> GetTracking(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetTrackingAsync(tenantId, ct));
 
     [HttpGet("orders/{orderId:guid}")]
     public async Task<ActionResult<DeliveryOrderDto>> GetOrder(Guid orderId, CancellationToken ct)
@@ -64,13 +55,13 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
     public async Task<ActionResult<DeliveryOrderDto>> Assign(Guid orderId, [FromBody] AssignDeliveryRequest request, CancellationToken ct) =>
         Ok(await deliveryService.AssignAsync(orderId, request, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/routes")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryRouteDto>>> GetRoutes(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetRoutesAsync(fleetId, ct));
+    [HttpGet("tenants/{tenantId:guid}/routes")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryRouteDto>>> GetRoutes(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetRoutesAsync(tenantId, ct));
 
-    [HttpPost("fleets/{fleetId:guid}/routes")]
-    public async Task<ActionResult<DeliveryRouteDetailDto>> CreateRoute(Guid fleetId, [FromBody] CreateDeliveryRouteRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateRouteAsync(fleetId, request, ct));
+    [HttpPost("tenants/{tenantId:guid}/routes")]
+    public async Task<ActionResult<DeliveryRouteDetailDto>> CreateRoute(Guid tenantId, [FromBody] CreateDeliveryRouteRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.CreateRouteAsync(tenantId, request, ct));
 
     [HttpGet("routes/{routeId:guid}")]
     public async Task<ActionResult<DeliveryRouteDetailDto>> GetRoute(Guid routeId, CancellationToken ct)

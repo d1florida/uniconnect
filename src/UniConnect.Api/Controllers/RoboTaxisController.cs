@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using UniConnect.Application.DTOs;
 using UniConnect.RoboTaxi.DTOs;
 using UniConnect.RoboTaxi.Interfaces;
 
@@ -16,25 +15,17 @@ public class RoboTaxisController(IRoboTaxiService roboTaxiService) : ControllerB
     public async Task<ActionResult<RoboTaxiDashboardDto>> GetDashboard(CancellationToken ct) =>
         Ok(await roboTaxiService.GetDashboardAsync(ct));
 
-    [HttpGet("fleets")]
-    public async Task<ActionResult<IReadOnlyList<FleetDto>>> GetFleets(CancellationToken ct) =>
-        Ok(await roboTaxiService.GetFleetsAsync(ct));
+    [HttpGet("tenants/{tenantId:guid}/vehicles")]
+    public async Task<ActionResult<IReadOnlyList<RoboTaxiVehicleDto>>> GetVehicles(Guid tenantId, CancellationToken ct) =>
+        Ok(await roboTaxiService.GetVehiclesAsync(tenantId, ct));
 
-    [HttpPost("fleets")]
-    public async Task<ActionResult<FleetDto>> CreateFleet([FromBody] CreateFleetRequest request, CancellationToken ct) =>
-        Ok(await roboTaxiService.CreateFleetAsync(request.Name, request.Slug, ct));
+    [HttpPost("tenants/{tenantId:guid}/vehicles")]
+    public async Task<ActionResult<RoboTaxiVehicleDto>> CreateVehicle(Guid tenantId, [FromBody] CreateRoboTaxiVehicleRequest request, CancellationToken ct) =>
+        Ok(await roboTaxiService.CreateVehicleAsync(tenantId, request, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/vehicles")]
-    public async Task<ActionResult<IReadOnlyList<RoboTaxiVehicleDto>>> GetVehicles(Guid fleetId, CancellationToken ct) =>
-        Ok(await roboTaxiService.GetVehiclesAsync(fleetId, ct));
-
-    [HttpPost("fleets/{fleetId:guid}/vehicles")]
-    public async Task<ActionResult<RoboTaxiVehicleDto>> CreateVehicle(Guid fleetId, [FromBody] CreateRoboTaxiVehicleRequest request, CancellationToken ct) =>
-        Ok(await roboTaxiService.CreateVehicleAsync(fleetId, request, ct));
-
-    [HttpGet("fleets/{fleetId:guid}/tracking")]
-    public async Task<ActionResult<IReadOnlyList<RoboTaxiTrackingDto>>> GetTracking(Guid fleetId, CancellationToken ct) =>
-        Ok(await roboTaxiService.GetTrackingAsync(fleetId, ct));
+    [HttpGet("tenants/{tenantId:guid}/tracking")]
+    public async Task<ActionResult<IReadOnlyList<RoboTaxiTrackingDto>>> GetTracking(Guid tenantId, CancellationToken ct) =>
+        Ok(await roboTaxiService.GetTrackingAsync(tenantId, ct));
 
     [HttpGet("vehicles/{vehicleId:guid}")]
     public async Task<ActionResult<RoboTaxiVehicleDto>> GetVehicle(Guid vehicleId, CancellationToken ct)

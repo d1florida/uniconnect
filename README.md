@@ -1,6 +1,13 @@
 # UniConnect
 
-Modular fleet SaaS: **Fleet** (maintenance + tracking), **Robo-Taxi** (autonomous passenger AV), and **Delivery** (B2B/B2C logistics with autonomous and conventional vehicles).
+Modular fleet SaaS with three **products** on a shared **platform**:
+
+| Layer | Responsibility |
+|-------|----------------|
+| **Platform** (`UniConnect.Tenant`, `UniConnect.Application`) | Tenant records, `ProductModule`, JWT auth, `ITenantService` |
+| **General Fleet** (`UniConnect.GeneralFleet`) | Conventional fleet maintenance + GPS tracking |
+| **Robo-Taxi** (`UniConnect.RoboTaxi`) | Autonomous passenger AV operations |
+| **Delivery** (`UniConnect.Delivery`) | B2B/B2C logistics (conventional + autonomous vehicles) |
 
 ## Stack
 
@@ -15,14 +22,24 @@ Modular fleet SaaS: **Fleet** (maintenance + tracking), **Robo-Taxi** (autonomou
 
 ## Quick start
 
-### 1. Database
+### Option A: `dev.ps1` (Windows)
+
+```powershell
+.\dev.ps1
+```
+
+Starts Postgres (Docker), applies migrations, runs the API on **5000** and Vite on **5173**.
+
+### Option B: Manual
+
+#### 1. Database
 
 ```bash
 cp .env.example .env
 docker compose up -d
 ```
 
-### 2. API
+#### 2. API
 
 ```bash
 cd src/UniConnect.Infrastructure
@@ -33,7 +50,7 @@ dotnet run
 
 API: http://localhost:5000 — Swagger: http://localhost:5000/swagger
 
-### 3. Web
+#### 3. Web
 
 ```bash
 cd web/uniconnect-web
@@ -45,20 +62,37 @@ Web: http://localhost:5173 — you will be redirected to **Sign in**.
 
 ### Demo logins (password: `Demo123!`)
 
-| Email | Fleet / role |
+| Email | Product / role |
 |-------|----------------|
-| `fleet@demo.local` | Demo General Fleet |
-| `av@demo.local` | Demo AV Fleet (Robo-Taxi) |
-| `delivery@demo.local` | Demo Delivery Fleet |
-| `admin@demo.local` | Platform admin (all modules) |
+| `fleet@demo.local` | General Fleet (Demo General Fleet) |
+| `av@demo.local` | Robo-Taxi (Demo AV Fleet) |
+| `delivery@demo.local` | Delivery (Demo Delivery Fleet) |
+| `admin@demo.local` | Platform admin (all products) |
 
 ## Module map
 
-| UI section | Fleet type | API prefix |
-|------------|------------|------------|
-| Fleet | `General` | `/api/fleets`, `/api/vehicles` |
-| Robo-Taxi | `RoboTaxi` | `/api/robo-taxis` |
-| Delivery | `Delivery` | `/api/delivery` |
+| UI section | Product module | API prefix | UI routes |
+|------------|----------------|------------|-----------|
+| Tenants (admin) | — | `/api/tenants` | `/tenants`, `/tenants/new`, `/tenants/:id` |
+| General Fleet | `General` | `/api/fleet` | `/`, `/fleet/tenants/:id/…` |
+| Robo-Taxi | `RoboTaxi` | `/api/robo-taxis` | `/robo-taxis`, … |
+| Delivery | `Delivery` | `/api/delivery` | `/delivery`, … |
+
+Platform admins create and manage tenants via `/api/tenants` (one or more product modules per tenant). General Fleet vehicle/maintenance/tracking endpoints live under `/api/fleet/...`.
+
+## Solution layout
+
+```
+src/
+  UniConnect.Tenant/          # Platform tenants (Tenant entity, ITenantService)
+  UniConnect.Application/    # JWT auth only
+  UniConnect.GeneralFleet/   # General Fleet product (vehicles, maintenance, GPS)
+  UniConnect.RoboTaxi/       # Robo-Taxi product
+  UniConnect.Delivery/       # Delivery product
+  UniConnect.Infrastructure/ # EF Core, implementations
+  UniConnect.Api/            # HTTP API
+web/uniconnect-web/          # React SPA (modules/fleets, general-fleet, robo-taxi, delivery)
+```
 
 ## Demo data
 
@@ -70,7 +104,7 @@ Development seed includes:
 
 ## Current app features
 
-- JWT auth with **fleet-scoped** data access (each operator sees only their fleet)
+- JWT auth with **tenant-scoped** data access (each operator sees only their tenant)
 - Log maintenance from the vehicle detail page
 - Create B2B/B2C delivery orders from the UI
 - Advance delivery status workflow on order detail

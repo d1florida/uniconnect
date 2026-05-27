@@ -9,6 +9,7 @@ using UniConnect.Application.DTOs;
 using UniConnect.Application.Interfaces;
 using UniConnect.Infrastructure.Data;
 using UniConnect.Infrastructure.Identity;
+using UniConnect.Tenant;
 
 namespace UniConnect.Infrastructure.Services;
 
@@ -40,17 +41,18 @@ public class AuthService(
 
     private async Task<UserProfileDto> BuildProfileAsync(ApplicationUser user, CancellationToken ct)
     {
-        string? fleetName = null;
-        Domain.Enums.FleetType? fleetType = null;
-        if (user.FleetId.HasValue)
+        string? tenantName = null;
+        IReadOnlyList<UniConnect.Tenant.Enums.ProductModule> modules = [];
+        if (user.TenantId.HasValue)
         {
-            var fleet = await db.Fleets.AsNoTracking().FirstOrDefaultAsync(f => f.Id == user.FleetId, ct);
-            fleetName = fleet?.Name;
-            fleetType = fleet?.FleetType;
+            var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == user.TenantId, ct);
+            tenantName = tenant?.Name;
+            if (tenant is not null)
+                modules = ProductModuleHelper.Expand(tenant.Modules);
         }
 
         var isAdmin = await userManager.IsInRoleAsync(user, "PlatformAdmin");
-        return new UserProfileDto(user.Id, user.Email!, user.DisplayName, user.FleetId, fleetName, fleetType, isAdmin);
+        return new UserProfileDto(user.Id, user.Email!, user.DisplayName, user.TenantId, tenantName, modules, isAdmin);
     }
 
     private string GenerateToken(ApplicationUser user, UserProfileDto profile, DateTime expires)
@@ -62,11 +64,12 @@ public class AuthService(
             new(JwtRegisteredClaimNames.Name, user.DisplayName),
         };
 
-        if (user.FleetId.HasValue)
+        if (user.TenantId.HasValue)
         {
-            claims.Add(new Claim("fleet_id", user.FleetId.Value.ToString()));
-            if (profile.FleetType.HasValue)
-                claims.Add(new Claim("fleet_type", profile.FleetType.Value.ToString()));
+            claims.Add(new Claim("tenant_id", user.TenantId.Value.ToString()));
+            var moduleFlags = ProductModuleHelper.Combine(profile.Modules);
+            if (moduleFlags != UniConnect.Tenant.Enums.ProductModule.None)
+                claims.Add(new Claim("product_modules", ((int)moduleFlags).ToString()));
         }
 
         if (profile.IsPlatformAdmin)

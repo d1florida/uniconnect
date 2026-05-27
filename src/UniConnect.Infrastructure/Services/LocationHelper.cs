@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using UniConnect.Application.DTOs;
-using UniConnect.Domain.Entities;
+using UniConnect.GeneralFleet.DTOs;
+using UniConnect.GeneralFleet.Entities;
 using UniConnect.Infrastructure.Data;
 
 namespace UniConnect.Infrastructure.Services;

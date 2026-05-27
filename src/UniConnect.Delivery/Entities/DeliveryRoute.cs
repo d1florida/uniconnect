@@ -1,12 +1,13 @@
 using UniConnect.Delivery.Enums;
-using UniConnect.Domain.Entities;
+using UniConnect.GeneralFleet.Enums;
+using TenantEntity = UniConnect.Tenant.Entities.Tenant;
 
 namespace UniConnect.Delivery.Entities;
 
 public class DeliveryRoute
 {
     public Guid Id { get; set; }
-    public Guid FleetId { get; set; }
+    public Guid TenantId { get; set; }
     public string Name { get; set; } = string.Empty;
     public DeliveryRouteStatus Status { get; set; }
     public string DepotAddress { get; set; } = string.Empty;
@@ -17,6 +18,6 @@ public class DeliveryRoute
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 
-    public Fleet Fleet { get; set; } = null!;
+    public TenantEntity Tenant { get; set; } = null!;
     public ICollection<DeliveryRouteStop> Stops { get; set; } = [];
 }

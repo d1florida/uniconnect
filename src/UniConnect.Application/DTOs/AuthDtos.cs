@@ -1,4 +1,4 @@
-using UniConnect.Domain.Enums;
+using UniConnect.Tenant.Enums;
 
 namespace UniConnect.Application.DTOs;
 
@@ -10,7 +10,7 @@ public record UserProfileDto(
     Guid UserId,
     string Email,
     string DisplayName,
-    Guid? FleetId,
-    string? FleetName,
-    FleetType? FleetType,
+    Guid? TenantId,
+    string? TenantName,
+    IReadOnlyList<ProductModule> Modules,
     bool IsPlatformAdmin);

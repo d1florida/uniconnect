@@ -1,4 +1,4 @@
-using UniConnect.Application.DTOs;
+using UniConnect.GeneralFleet.DTOs;
 using UniConnect.RoboTaxi.Enums;
 
 namespace UniConnect.RoboTaxi.DTOs;
@@ -15,7 +15,7 @@ public record RoboTaxiProfileDto(
 
 public record RoboTaxiVehicleDto(
     Guid Id,
-    Guid FleetId,
+    Guid TenantId,
     string Vin,
     string Make,
     string Model,

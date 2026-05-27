@@ -2,16 +2,17 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using UniConnect.Delivery.Entities;
-using UniConnect.Domain.Entities;
+using UniConnect.GeneralFleet.Entities;
 using UniConnect.Infrastructure.Identity;
 using UniConnect.RoboTaxi.Entities;
+using TenantEntity = UniConnect.Tenant.Entities.Tenant;
 
 namespace UniConnect.Infrastructure.Data;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
-    public DbSet<Fleet> Fleets => Set<Fleet>();
+    public DbSet<TenantEntity> Tenants => Set<TenantEntity>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
     public DbSet<VehicleLocation> VehicleLocations => Set<VehicleLocation>();
@@ -26,27 +27,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.Entity<Fleet>(e =>
+        modelBuilder.Entity<TenantEntity>(e =>
         {
+            e.ToTable("Tenants");
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Slug).IsUnique();
+            e.Property(x => x.Modules).HasColumnName("Modules");
         });
 
         modelBuilder.Entity<Vehicle>(e =>
         {
+            e.ToTable("Vehicles");
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Vin).IsUnique();
-            e.HasOne(x => x.Fleet).WithMany(f => f.Vehicles).HasForeignKey(x => x.FleetId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MaintenanceRecord>(e =>
         {
+            e.ToTable("MaintenanceRecords");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.Vehicle).WithMany(v => v.MaintenanceRecords).HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<VehicleLocation>(e =>
         {
+            e.ToTable("VehicleLocations");
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.VehicleId, x.RecordedAt });
             e.HasOne(x => x.Vehicle).WithMany(v => v.Locations).HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Cascade);
@@ -60,14 +66,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         modelBuilder.Entity<BusinessAccount>(e =>
         {
             e.HasKey(x => x.Id);
-            e.HasIndex(x => new { x.FleetId, x.AccountCode }).IsUnique();
-            e.HasOne(x => x.Fleet).WithMany().HasForeignKey(x => x.FleetId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.TenantId, x.AccountCode }).IsUnique();
+            e.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<DeliveryOrder>(e =>
         {
             e.HasKey(x => x.Id);
-            e.HasOne(x => x.Fleet).WithMany().HasForeignKey(x => x.FleetId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.BusinessAccount).WithMany().HasForeignKey(x => x.BusinessAccountId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Assignment).WithOne(a => a.DeliveryOrder).HasForeignKey<DeliveryAssignment>(a => a.DeliveryOrderId);
         });
@@ -80,8 +86,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         modelBuilder.Entity<DeliveryRoute>(e =>
         {
             e.HasKey(x => x.Id);
-            e.HasIndex(x => new { x.FleetId, x.ScheduledDate });
-            e.HasOne(x => x.Fleet).WithMany().HasForeignKey(x => x.FleetId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.TenantId, x.ScheduledDate });
+            e.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<DeliveryRouteStop>(e =>
@@ -93,7 +99,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
         modelBuilder.Entity<ApplicationUser>(e =>
         {
-            e.HasIndex(x => x.FleetId);
+            e.HasIndex(x => x.TenantId);
         });
     }
 }

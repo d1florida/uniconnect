@@ -11,6 +11,8 @@ using UniConnect.Infrastructure.Data;
 using UniConnect.Infrastructure.Identity;
 using UniConnect.Infrastructure.Services;
 using UniConnect.Delivery.Interfaces;
+using UniConnect.GeneralFleet.Interfaces;
+using UniConnect.Tenant.Interfaces;
 using UniConnect.RoboTaxi.Interfaces;
 
 namespace UniConnect.Infrastructure;
@@ -27,6 +29,8 @@ public static class DependencyInjection
                 options.Password.RequireDigit = true;
                 options.Password.RequiredLength = 8;
                 options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireLowercase = false;
             })
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<AppDbContext>()
@@ -60,7 +64,8 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IFleetService, FleetService>();
+        services.AddScoped<ITenantService, TenantService>();
+        services.AddScoped<IGeneralFleetService, GeneralFleetService>();
         services.AddScoped<IRoboTaxiService, RoboTaxiService>();
         services.AddScoped<IDeliveryService, DeliveryService>();
 

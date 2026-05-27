@@ -1,12 +1,12 @@
 using UniConnect.Delivery.Enums;
-using UniConnect.Domain.Entities;
+using TenantEntity = UniConnect.Tenant.Entities.Tenant;
 
 namespace UniConnect.Delivery.Entities;
 
 public class DeliveryOrder
 {
     public Guid Id { get; set; }
-    public Guid FleetId { get; set; }
+    public Guid TenantId { get; set; }
     public DeliveryChannel Channel { get; set; }
     public DeliveryOrderStatus Status { get; set; }
     public string PickupAddress { get; set; } = string.Empty;
@@ -19,7 +19,7 @@ public class DeliveryOrder
     public DateTime? ScheduledWindowEnd { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    public Fleet Fleet { get; set; } = null!;
+    public TenantEntity Tenant { get; set; } = null!;
     public BusinessAccount? BusinessAccount { get; set; }
     public DeliveryAssignment? Assignment { get; set; }
 }

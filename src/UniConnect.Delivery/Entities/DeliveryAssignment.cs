@@ -1,4 +1,4 @@
-using UniConnect.Delivery.Enums;
+using UniConnect.GeneralFleet.Enums;
 
 namespace UniConnect.Delivery.Entities;
 

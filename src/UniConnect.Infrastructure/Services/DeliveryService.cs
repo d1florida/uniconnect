@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
-using UniConnect.Application.DTOs;
 using UniConnect.Application.Interfaces;
 using UniConnect.Delivery.DTOs;
 using UniConnect.Delivery.Entities;
 using UniConnect.Delivery.Enums;
 using UniConnect.Delivery.Interfaces;
-using UniConnect.Domain.Entities;
-using UniConnect.Domain.Enums;
+using UniConnect.Tenant.Enums;
+using UniConnect.GeneralFleet.DTOs;
+using UniConnect.GeneralFleet.Enums;
+using UniConnect.GeneralFleet.Entities;
 using UniConnect.Infrastructure.Data;
 using UniConnect.RoboTaxi.Entities;
 using UniConnect.RoboTaxi.Enums;
@@ -24,9 +25,9 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
 
     public async Task<DeliveryDashboardDto> GetDashboardAsync(CancellationToken ct = default)
     {
-        var fleetIds = await ScopedDeliveryFleetIdsAsync(ct);
+        var tenantIds = await ScopedDeliveryTenantIdsAsync(ct);
         var orders = await ScopedOrders()
-            .Where(o => fleetIds.Contains(o.FleetId))
+            .Where(o => tenantIds.Contains(o.TenantId))
             .ToListAsync(ct);
 
         var assignments = await db.DeliveryAssignments.AsNoTracking()
@@ -39,7 +40,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
             .ToHashSet();
 
         var routes = await ScopedRoutes()
-            .Where(r => fleetIds.Contains(r.FleetId))
+            .Where(r => tenantIds.Contains(r.TenantId))
             .ToListAsync(ct);
 
         return new DeliveryDashboardDto(
@@ -53,66 +54,38 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
             routes.Count(r => r.Status == DeliveryRouteStatus.Planned));
     }
 
-    public async Task<IReadOnlyList<FleetDto>> GetFleetsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<BusinessAccountDto>> GetBusinessAccountsAsync(Guid tenantId, CancellationToken ct = default)
     {
-        var query = db.Fleets.AsNoTracking().Where(f => f.FleetType == FleetType.Delivery);
-        if (!currentUser.IsPlatformAdmin && currentUser.FleetId.HasValue)
-            query = query.Where(f => f.Id == currentUser.FleetId.Value);
-        return await query.OrderBy(f => f.Name)
-            .Select(f => new FleetDto(f.Id, f.Name, f.Slug, f.FleetType, f.CreatedAt))
-            .ToListAsync(ct);
-    }
-
-    public async Task<FleetDto> CreateFleetAsync(string name, string slug, CancellationToken ct = default)
-    {
-        if (!currentUser.IsPlatformAdmin)
-            throw new UnauthorizedAccessException("Only platform administrators can create fleets.");
-
-        var fleet = new Fleet
-        {
-            Id = Guid.NewGuid(),
-            Name = name,
-            Slug = slug.ToLowerInvariant(),
-            FleetType = FleetType.Delivery,
-            CreatedAt = DateTime.UtcNow
-        };
-        db.Fleets.Add(fleet);
-        await db.SaveChangesAsync(ct);
-        return new FleetDto(fleet.Id, fleet.Name, fleet.Slug, fleet.FleetType, fleet.CreatedAt);
-    }
-
-    public async Task<IReadOnlyList<BusinessAccountDto>> GetBusinessAccountsAsync(Guid fleetId, CancellationToken ct = default)
-    {
-        currentUser.EnsureFleetAccess(fleetId);
+        currentUser.EnsureTenantAccess(tenantId);
         return await db.BusinessAccounts.AsNoTracking()
-            .Where(b => b.FleetId == fleetId)
+            .Where(b => b.TenantId == tenantId)
             .OrderBy(b => b.CompanyName)
-            .Select(b => new BusinessAccountDto(b.Id, b.FleetId, b.CompanyName, b.AccountCode, b.ContactEmail))
+            .Select(b => new BusinessAccountDto(b.Id, b.TenantId, b.CompanyName, b.AccountCode, b.ContactEmail))
             .ToListAsync(ct);
     }
 
-    public async Task<BusinessAccountDto> CreateBusinessAccountAsync(Guid fleetId, CreateBusinessAccountRequest request, CancellationToken ct = default)
+    public async Task<BusinessAccountDto> CreateBusinessAccountAsync(Guid tenantId, CreateBusinessAccountRequest request, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
+        currentUser.EnsureTenantAccess(tenantId);
         var account = new BusinessAccount
         {
             Id = Guid.NewGuid(),
-            FleetId = fleetId,
+            TenantId = tenantId,
             CompanyName = request.CompanyName,
             AccountCode = request.AccountCode,
             ContactEmail = request.ContactEmail
         };
         db.BusinessAccounts.Add(account);
         await db.SaveChangesAsync(ct);
-        return new BusinessAccountDto(account.Id, account.FleetId, account.CompanyName, account.AccountCode, account.ContactEmail);
+        return new BusinessAccountDto(account.Id, account.TenantId, account.CompanyName, account.AccountCode, account.ContactEmail);
     }
 
-    public async Task<IReadOnlyList<DeliveryOrderDto>> GetOrdersAsync(Guid fleetId, DeliveryChannel? channel, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DeliveryOrderDto>> GetOrdersAsync(Guid tenantId, DeliveryChannel? channel, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
+        currentUser.EnsureTenantAccess(tenantId);
         var query = ScopedOrders()
             .AsNoTracking()
-            .Where(o => o.FleetId == fleetId);
+            .Where(o => o.TenantId == tenantId);
         if (channel.HasValue)
             query = query.Where(o => o.Channel == channel.Value);
 
@@ -149,13 +122,13 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         return MapOrder(order, plate);
     }
 
-    public async Task<DeliveryOrderDto> CreateOrderAsync(Guid fleetId, CreateDeliveryOrderRequest request, CancellationToken ct = default)
+    public async Task<DeliveryOrderDto> CreateOrderAsync(Guid tenantId, CreateDeliveryOrderRequest request, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
+        currentUser.EnsureTenantAccess(tenantId);
         if (request.BusinessAccountId.HasValue)
         {
             var exists = await db.BusinessAccounts.AsNoTracking()
-                .AnyAsync(b => b.Id == request.BusinessAccountId.Value && b.FleetId == fleetId, ct);
+                .AnyAsync(b => b.Id == request.BusinessAccountId.Value && b.TenantId == tenantId, ct);
             if (!exists)
                 throw new InvalidOperationException("Business account not found.");
         }
@@ -163,7 +136,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         var order = new DeliveryOrder
         {
             Id = Guid.NewGuid(),
-            FleetId = fleetId,
+            TenantId = tenantId,
             Channel = request.Channel,
             Status = DeliveryOrderStatus.Created,
             PickupAddress = request.PickupAddress,
@@ -197,7 +170,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
             .FirstOrDefaultAsync(o => o.Id == orderId, ct)
             ?? throw new InvalidOperationException("Order not found.");
 
-        await ValidateVehicleForAssignmentAsync(order.FleetId, request.VehicleId, request.AutomationMode, ct);
+        await ValidateVehicleForAssignmentAsync(order.TenantId, request.VehicleId, request.AutomationMode, ct);
 
         if (order.Assignment is null)
         {
@@ -225,10 +198,10 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         return (await GetOrderAsync(orderId, ct))!;
     }
 
-    public async Task<IReadOnlyList<DeliveryVehicleDto>> GetVehiclesAsync(Guid fleetId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DeliveryVehicleDto>> GetVehiclesAsync(Guid tenantId, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
-        var vehicles = await db.Vehicles.AsNoTracking().Where(v => v.FleetId == fleetId).ToListAsync(ct);
+        currentUser.EnsureTenantAccess(tenantId);
+        var vehicles = await db.Vehicles.AsNoTracking().Where(v => v.TenantId == tenantId).ToListAsync(ct);
         var profiles = await db.RoboTaxiProfiles.AsNoTracking()
             .Where(p => vehicles.Select(v => v.Id).Contains(p.VehicleId))
             .ToDictionaryAsync(p => p.VehicleId, ct);
@@ -243,10 +216,10 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         }).ToList();
     }
 
-    public async Task<IReadOnlyList<DeliveryTrackingDto>> GetTrackingAsync(Guid fleetId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DeliveryTrackingDto>> GetTrackingAsync(Guid tenantId, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
-        var vehicles = await db.Vehicles.AsNoTracking().Where(v => v.FleetId == fleetId).ToListAsync(ct);
+        currentUser.EnsureTenantAccess(tenantId);
+        var vehicles = await db.Vehicles.AsNoTracking().Where(v => v.TenantId == tenantId).ToListAsync(ct);
         var profiles = await db.RoboTaxiProfiles.AsNoTracking()
             .Where(p => vehicles.Select(v => v.Id).Contains(p.VehicleId))
             .ToDictionaryAsync(p => p.VehicleId, ct);
@@ -275,12 +248,12 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         }).ToList();
     }
 
-    public async Task<IReadOnlyList<DeliveryRouteDto>> GetRoutesAsync(Guid fleetId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DeliveryRouteDto>> GetRoutesAsync(Guid tenantId, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
+        currentUser.EnsureTenantAccess(tenantId);
         var routes = await ScopedRoutes()
             .AsNoTracking()
-            .Where(r => r.FleetId == fleetId)
+            .Where(r => r.TenantId == tenantId)
             .Include(r => r.Stops)
             .OrderByDescending(r => r.ScheduledDate)
             .ThenByDescending(r => r.CreatedAt)
@@ -312,9 +285,9 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         return MapRouteDetail(route, plate);
     }
 
-    public async Task<DeliveryRouteDetailDto> CreateRouteAsync(Guid fleetId, CreateDeliveryRouteRequest request, CancellationToken ct = default)
+    public async Task<DeliveryRouteDetailDto> CreateRouteAsync(Guid tenantId, CreateDeliveryRouteRequest request, CancellationToken ct = default)
     {
-        currentUser.EnsureFleetAccess(fleetId);
+        currentUser.EnsureTenantAccess(tenantId);
         if (string.IsNullOrWhiteSpace(request.Name))
             throw new ArgumentException("Route name is required.");
         if (request.Stops.Count == 0)
@@ -327,7 +300,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         var route = new DeliveryRoute
         {
             Id = routeId,
-            FleetId = fleetId,
+            TenantId = tenantId,
             Name = request.Name.Trim(),
             Status = DeliveryRouteStatus.Draft,
             DepotAddress = request.DepotAddress.Trim(),
@@ -430,7 +403,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
     {
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
-        await ValidateVehicleForAssignmentAsync(route.FleetId, request.VehicleId, request.AutomationMode, ct);
+        await ValidateVehicleForAssignmentAsync(route.TenantId, request.VehicleId, request.AutomationMode, ct);
 
         route.VehicleId = request.VehicleId;
         route.AutomationMode = request.AutomationMode;
@@ -562,24 +535,24 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
     private IQueryable<DeliveryOrder> ScopedOrders()
     {
         var query = db.DeliveryOrders.AsQueryable();
-        if (!currentUser.IsPlatformAdmin && currentUser.FleetId.HasValue)
-            query = query.Where(o => o.FleetId == currentUser.FleetId.Value);
+        if (!currentUser.IsPlatformAdmin && currentUser.TenantId.HasValue)
+            query = query.Where(o => o.TenantId == currentUser.TenantId.Value);
         return query;
     }
 
     private IQueryable<DeliveryRoute> ScopedRoutes()
     {
         var query = db.DeliveryRoutes.AsQueryable();
-        if (!currentUser.IsPlatformAdmin && currentUser.FleetId.HasValue)
-            query = query.Where(r => r.FleetId == currentUser.FleetId.Value);
+        if (!currentUser.IsPlatformAdmin && currentUser.TenantId.HasValue)
+            query = query.Where(r => r.TenantId == currentUser.TenantId.Value);
         return query;
     }
 
-    private async Task<List<Guid>> ScopedDeliveryFleetIdsAsync(CancellationToken ct)
+    private async Task<List<Guid>> ScopedDeliveryTenantIdsAsync(CancellationToken ct)
     {
-        var query = db.Fleets.AsNoTracking().Where(f => f.FleetType == FleetType.Delivery);
-        if (!currentUser.IsPlatformAdmin && currentUser.FleetId.HasValue)
-            query = query.Where(f => f.Id == currentUser.FleetId.Value);
+        var query = db.Tenants.AsNoTracking().Where(f => (f.Modules & ProductModule.Delivery) == ProductModule.Delivery);
+        if (!currentUser.IsPlatformAdmin && currentUser.TenantId.HasValue)
+            query = query.Where(f => f.Id == currentUser.TenantId.Value);
         return await query.Select(f => f.Id).ToListAsync(ct);
     }
 
@@ -598,12 +571,12 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
             throw new InvalidOperationException("Route can only be modified while in Draft or Planned status.");
     }
 
-    private async Task ValidateVehicleForAssignmentAsync(Guid fleetId, Guid vehicleId, AutomationMode mode, CancellationToken ct)
+    private async Task ValidateVehicleForAssignmentAsync(Guid tenantId, Guid vehicleId, AutomationMode mode, CancellationToken ct)
     {
         var vehicle = await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == vehicleId, ct)
             ?? throw new InvalidOperationException("Vehicle not found.");
-        if (vehicle.FleetId != fleetId)
-            throw new InvalidOperationException("Vehicle does not belong to this fleet.");
+        if (vehicle.TenantId != tenantId)
+            throw new InvalidOperationException("Vehicle does not belong to this tenant.");
 
         if (mode == AutomationMode.Autonomous)
         {
@@ -619,7 +592,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
     private static DeliveryOrderDto MapOrder(DeliveryOrder order, string? licensePlate) =>
         new(
             order.Id,
-            order.FleetId,
+            order.TenantId,
             order.Channel,
             order.Status,
             order.PickupAddress,
@@ -642,7 +615,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         var (completed, pending) = CountDeliveryStopProgress(route.Stops);
         return new DeliveryRouteDto(
             route.Id,
-            route.FleetId,
+            route.TenantId,
             route.Name,
             route.Status,
             route.DepotAddress,
@@ -663,7 +636,7 @@ public class DeliveryService(AppDbContext db, ICurrentUserService currentUser) :
         var stops = route.Stops.OrderBy(s => s.Sequence).Select(MapStop).ToList();
         return new DeliveryRouteDetailDto(
             route.Id,
-            route.FleetId,
+            route.TenantId,
             route.Name,
             route.Status,
             route.DepotAddress,

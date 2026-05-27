@@ -1,12 +1,13 @@
-using UniConnect.Application.DTOs;
 using UniConnect.Delivery.Enums;
+using UniConnect.GeneralFleet.DTOs;
+using UniConnect.GeneralFleet.Enums;
 using UniConnect.RoboTaxi.Enums;
 
 namespace UniConnect.Delivery.DTOs;
 
 public record BusinessAccountDto(
     Guid Id,
-    Guid FleetId,
+    Guid TenantId,
     string CompanyName,
     string AccountCode,
     string ContactEmail);
@@ -25,7 +26,7 @@ public record DeliveryAssignmentDto(
 
 public record DeliveryOrderDto(
     Guid Id,
-    Guid FleetId,
+    Guid TenantId,
     DeliveryChannel Channel,
     DeliveryOrderStatus Status,
     string PickupAddress,
@@ -94,7 +95,7 @@ public record DeliveryRouteStopDto(
 
 public record DeliveryRouteDto(
     Guid Id,
-    Guid FleetId,
+    Guid TenantId,
     string Name,
     DeliveryRouteStatus Status,
     string DepotAddress,
@@ -111,7 +112,7 @@ public record DeliveryRouteDto(
 
 public record DeliveryRouteDetailDto(
     Guid Id,
-    Guid FleetId,
+    Guid TenantId,
     string Name,
     DeliveryRouteStatus Status,
     string DepotAddress,

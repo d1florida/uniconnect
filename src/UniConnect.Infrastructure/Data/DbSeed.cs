@@ -4,8 +4,10 @@ using Microsoft.Extensions.DependencyInjection;
 using UniConnect.Delivery.Entities;
 using UniConnect.Infrastructure.Identity;
 using UniConnect.Delivery.Enums;
-using UniConnect.Domain.Entities;
-using UniConnect.Domain.Enums;
+using TenantEntity = UniConnect.Tenant.Entities.Tenant;
+using UniConnect.Tenant.Enums;
+using UniConnect.GeneralFleet.Entities;
+using UniConnect.GeneralFleet.Enums;
 using UniConnect.RoboTaxi.Entities;
 using UniConnect.RoboTaxi.Enums;
 
@@ -13,9 +15,9 @@ namespace UniConnect.Infrastructure.Data;
 
 public static class DbSeed
 {
-    public static readonly Guid GeneralFleetId = Guid.Parse("11111111-1111-1111-1111-111111111101");
-    public static readonly Guid AvFleetId = Guid.Parse("22222222-2222-2222-2222-222222222201");
-    public static readonly Guid DeliveryFleetId = Guid.Parse("33333333-3333-3333-3333-333333333301");
+    public static readonly Guid GeneralTenantId = Guid.Parse("11111111-1111-1111-1111-111111111101");
+    public static readonly Guid AvTenantId = Guid.Parse("22222222-2222-2222-2222-222222222201");
+    public static readonly Guid DeliveryTenantId = Guid.Parse("33333333-3333-3333-3333-333333333301");
 
     public static async Task SeedAsync(IServiceProvider services)
     {
@@ -23,8 +25,8 @@ public static class DbSeed
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
 
-        if (!await db.Fleets.AnyAsync())
-            await SeedFleetsAsync(db);
+        if (!await db.Tenants.AnyAsync())
+            await SeedTenantsAsync(db);
 
         if (!await db.DeliveryRoutes.AnyAsync())
             await SeedDeliveryRoutesAsync(db);
@@ -32,42 +34,50 @@ public static class DbSeed
         await SeedUsersAsync(scope.ServiceProvider);
     }
 
-    private static async Task SeedFleetsAsync(AppDbContext db)
+    private static async Task SeedTenantsAsync(AppDbContext db)
     {
-
         var now = DateTime.UtcNow;
 
-        var generalFleet = new Fleet
+        var generalTenant = new TenantEntity
         {
-            Id = GeneralFleetId,
+            Id = GeneralTenantId,
             Name = "Demo General Fleet",
             Slug = "demo-general",
-            FleetType = FleetType.General,
+            Modules = ProductModule.General,
+            ContactName = "Alex Morgan",
+            ContactEmail = "fleet@demo.local",
+            ContactPhone = "+1 555-0101",
             CreatedAt = now
         };
 
-        var avFleet = new Fleet
+        var avTenant = new TenantEntity
         {
-            Id = AvFleetId,
+            Id = AvTenantId,
             Name = "Demo AV Fleet",
             Slug = "demo-av",
-            FleetType = FleetType.RoboTaxi,
+            Modules = ProductModule.RoboTaxi,
+            ContactName = "Jordan Lee",
+            ContactEmail = "av@demo.local",
+            ContactPhone = "+1 555-0102",
             CreatedAt = now
         };
 
-        var deliveryFleet = new Fleet
+        var deliveryTenant = new TenantEntity
         {
-            Id = DeliveryFleetId,
+            Id = DeliveryTenantId,
             Name = "Demo Delivery Fleet",
             Slug = "demo-delivery",
-            FleetType = FleetType.Delivery,
+            Modules = ProductModule.Delivery,
+            ContactName = "Sam Rivera",
+            ContactEmail = "delivery@demo.local",
+            ContactPhone = "+1 555-0103",
             CreatedAt = now
         };
 
         var truck1 = new Vehicle
         {
             Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa101"),
-            FleetId = GeneralFleetId,
+            TenantId = GeneralTenantId,
             Vin = "1HGBH41JXMN109186",
             Make = "Ford",
             Model = "Transit",
@@ -80,7 +90,7 @@ public static class DbSeed
         var truck2 = new Vehicle
         {
             Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa102"),
-            FleetId = GeneralFleetId,
+            TenantId = GeneralTenantId,
             Vin = "2HGBH41JXMN109187",
             Make = "Mercedes",
             Model = "Sprinter",
@@ -93,7 +103,7 @@ public static class DbSeed
         var av1 = new Vehicle
         {
             Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb101"),
-            FleetId = AvFleetId,
+            TenantId = AvTenantId,
             Vin = "AVROBO00000000001",
             Make = "Waymo",
             Model = "Jaguar I-PACE",
@@ -106,7 +116,7 @@ public static class DbSeed
         var av2 = new Vehicle
         {
             Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb102"),
-            FleetId = AvFleetId,
+            TenantId = AvTenantId,
             Vin = "AVROBO00000000002",
             Make = "Cruise",
             Model = "Origin",
@@ -119,7 +129,7 @@ public static class DbSeed
         var deliveryVan = new Vehicle
         {
             Id = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccc01"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Vin = "DELCONV0000000001",
             Make = "Ford",
             Model = "E-Transit",
@@ -132,7 +142,7 @@ public static class DbSeed
         var deliveryAv = new Vehicle
         {
             Id = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccc02"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Vin = "DELAV000000000001",
             Make = "Nuro",
             Model = "R3",
@@ -142,7 +152,7 @@ public static class DbSeed
             Status = VehicleStatus.Active
         };
 
-        db.Fleets.AddRange(generalFleet, avFleet, deliveryFleet);
+        db.Tenants.AddRange(generalTenant, avTenant, deliveryTenant);
         db.Vehicles.AddRange(truck1, truck2, av1, av2, deliveryVan, deliveryAv);
 
         db.RoboTaxiProfiles.AddRange(
@@ -212,7 +222,7 @@ public static class DbSeed
         var businessAccount = new BusinessAccount
         {
             Id = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddd01"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             CompanyName = "Acme Wholesale",
             AccountCode = "ACME-001",
             ContactEmail = "logistics@acme.example"
@@ -222,7 +232,7 @@ public static class DbSeed
         var b2cOrder1 = new DeliveryOrder
         {
             Id = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Channel = DeliveryChannel.B2C,
             Status = DeliveryOrderStatus.InTransit,
             PickupAddress = "100 Market St, San Francisco",
@@ -236,7 +246,7 @@ public static class DbSeed
         var b2cOrder2 = new DeliveryOrder
         {
             Id = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Channel = DeliveryChannel.B2C,
             Status = DeliveryOrderStatus.Created,
             PickupAddress = "200 Mission St, San Francisco",
@@ -250,7 +260,7 @@ public static class DbSeed
         var b2bOrder = new DeliveryOrder
         {
             Id = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Channel = DeliveryChannel.B2B,
             Status = DeliveryOrderStatus.Assigned,
             PickupAddress = "Acme Warehouse, Oakland",
@@ -287,7 +297,7 @@ public static class DbSeed
 
     private static async Task SeedDeliveryRoutesAsync(AppDbContext db)
     {
-        var van = await db.Vehicles.FirstOrDefaultAsync(v => v.FleetId == DeliveryFleetId && v.LicensePlate == "DEL-001");
+        var van = await db.Vehicles.FirstOrDefaultAsync(v => v.TenantId == DeliveryTenantId && v.LicensePlate == "DEL-001");
         if (van is null) return;
 
         var now = DateTime.UtcNow;
@@ -295,7 +305,7 @@ public static class DbSeed
         var route = new DeliveryRoute
         {
             Id = routeId,
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Name = "Morning SF drops — May 20",
             Status = DeliveryRouteStatus.InProgress,
             DepotAddress = "2500 Distribution Way, San Francisco, CA",
@@ -361,7 +371,7 @@ public static class DbSeed
         var draftRoute = new DeliveryRoute
         {
             Id = Guid.Parse("ffffffff-ffff-ffff-ffff-fffffffffff2"),
-            FleetId = DeliveryFleetId,
+            TenantId = DeliveryTenantId,
             Name = "Afternoon pickups — draft",
             Status = DeliveryRouteStatus.Draft,
             DepotAddress = "2500 Distribution Way, San Francisco, CA",
@@ -415,7 +425,7 @@ public static class DbSeed
         if (!await roleManager.RoleExistsAsync("PlatformAdmin"))
             await roleManager.CreateAsync(new IdentityRole<Guid>("PlatformAdmin"));
 
-        async Task EnsureUser(string email, string name, Guid? fleetId, string? role = null)
+        async Task EnsureUser(string email, string name, Guid? tenantId, string? role = null)
         {
             if (await userManager.FindByEmailAsync(email) != null) return;
             var user = new ApplicationUser
@@ -424,7 +434,7 @@ public static class DbSeed
                 UserName = email,
                 Email = email,
                 DisplayName = name,
-                FleetId = fleetId,
+                TenantId = tenantId,
                 EmailConfirmed = true
             };
             var result = await userManager.CreateAsync(user, "Demo123!");
@@ -435,9 +445,9 @@ public static class DbSeed
                 await userManager.AddToRoleAsync(user, role);
         }
 
-        await EnsureUser("fleet@demo.local", "General Fleet Operator", GeneralFleetId);
-        await EnsureUser("av@demo.local", "AV Fleet Operator", AvFleetId);
-        await EnsureUser("delivery@demo.local", "Delivery Dispatcher", DeliveryFleetId);
+        await EnsureUser("fleet@demo.local", "General Fleet Operator", GeneralTenantId);
+        await EnsureUser("av@demo.local", "AV Fleet Operator", AvTenantId);
+        await EnsureUser("delivery@demo.local", "Delivery Dispatcher", DeliveryTenantId);
         await EnsureUser("admin@demo.local", "Platform Admin", null, "PlatformAdmin");
     }
 
