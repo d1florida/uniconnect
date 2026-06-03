@@ -49,7 +49,40 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor) : ICur
     public bool IsPlatformAdmin =>
         User?.IsInRole("PlatformAdmin") == true || User?.FindFirstValue("role") == "PlatformAdmin";
 
+    public bool IsApiKeyAuth => User?.FindFirstValue("auth_type") == "ApiKey";
+
+    public Guid? ApiKeyId => Guid.TryParse(User?.FindFirstValue("api_key_id"), out var id) ? id : null;
+
+    public TenantRole? TenantRole =>
+        Enum.TryParse<TenantRole>(User?.FindFirstValue("tenant_role"), ignoreCase: true, out var role) ? role : null;
+
+    public bool IsTenantAdmin => TenantRole == UniConnect.Tenant.Enums.TenantRole.Admin;
+
+    public void EnsureTenantAdmin()
+    {
+        if (IsPlatformAdmin) return;
+        if (!IsTenantAdmin)
+            throw new ForbiddenException("Tenant administrator access is required.");
+    }
+
     public bool HasModule(ProductModule module) => ProductModuleHelper.HasModule(ProductModules, module);
+
+    public void EnsureModule(ProductModule module)
+    {
+        if (IsPlatformAdmin) return;
+        if (!HasModule(module))
+            throw new ForbiddenException($"The {module} module is required.");
+    }
+
+    public void EnsureModules(params ProductModule[] modules)
+    {
+        if (IsPlatformAdmin) return;
+        foreach (var module in modules)
+        {
+            if (!HasModule(module))
+                throw new ForbiddenException($"The {module} module is required.");
+        }
+    }
 
     public void EnsureTenantAccess(Guid tenantId)
     {

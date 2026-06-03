@@ -21,7 +21,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("DevCors", policy =>
         policy.WithOrigins("http://localhost:5173")
-            .WithHeaders("Accept", "Content-Type", "Authorization")
+            .WithHeaders("Accept", "Content-Type", "Authorization", "X-Api-Key")
             .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .AllowCredentials());
 });

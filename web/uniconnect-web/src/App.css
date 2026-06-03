@@ -73,8 +73,6 @@ th { color: var(--muted); font-weight: 500; }
   font-weight: 500;
 }
 
-.badge-b2b { background: #1e3a5f; color: #93c5fd; }
-.badge-b2c { background: #3b1f4a; color: #d8b4fe; }
 .badge-av { background: #14532d; color: #86efac; }
 .badge-conv { background: #422006; color: #fcd34d; }
 .badge-grounded { background: #450a0a; color: #fca5a5; }
@@ -138,6 +136,162 @@ button.secondary { background: var(--border); }
 
 .muted { color: var(--muted); }
 
+.today-strip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.today-strip h3 { margin: 0 0 0.75rem; font-size: 0.875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.today-strip-items { display: flex; flex-wrap: wrap; gap: 1rem; }
+
+.today-strip-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+}
+
+.today-strip-item:hover { border-color: var(--accent); text-decoration: none; }
+
+.today-strip-item .value { font-size: 1.5rem; font-weight: 600; }
+.today-strip-item .label { font-size: 0.8125rem; color: var(--muted); }
+
+.today-strip-action { border-color: var(--accent); background: rgba(59, 130, 246, 0.08); }
+
+.success-banner {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.success-banner h3 { margin: 0 0 0.5rem; }
+
+.accept-route-links { margin: 0.5rem 0; padding-left: 1.25rem; }
+
+.plan-hint {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.plan-readiness-list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.plan-readiness-list li {
+  margin-bottom: 0.35rem;
+}
+
+.plan-readiness-warn {
+  color: #b45309;
+}
+
+.plan-input-details { margin-top: 0.75rem; }
+.plan-input-details summary { cursor: pointer; color: var(--accent); }
+
+.plan-order-preview { margin: 0.5rem 0 0; padding-left: 1.25rem; }
+.plan-order-preview li { margin-bottom: 0.35rem; }
+
+.plan-proposal { margin-top: 0; }
+
+.plan-routes { display: flex; flex-direction: column; gap: 0.75rem; margin: 1rem 0; }
+
+.plan-route-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.plan-route-header {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-route-header:hover { background: rgba(59, 130, 246, 0.06); }
+
+.plan-route-title { font-weight: 600; }
+
+.plan-route-chevron { color: var(--muted); }
+
+.plan-stops-table { margin: 0; font-size: 0.875rem; }
+.plan-stops-table th, .plan-stops-table td { padding: 0.5rem 0.75rem; }
+.insights-date-range { margin-bottom: 1rem; align-items: flex-end; }
+.insights-date-range label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; }
+.insights-events-table { width: 100%; font-size: 0.875rem; border-collapse: collapse; }
+.insights-events-table th, .insights-events-table td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border, #e5e7eb); vertical-align: top; }
+.insights-events-table th { font-weight: 600; }
+
+.plan-next-steps { margin-bottom: 1rem; }
+
+.plan-review-panel {
+  scroll-margin-top: 1rem;
+  margin-top: 1.25rem;
+}
+
+.plan-run-selected {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.order-geocode-block {
+  margin: 0.75rem 0 1rem;
+  font-size: 0.875rem;
+}
+
+.order-geocode-line {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.order-geocode-label {
+  min-width: 4.5rem;
+  color: var(--muted);
+}
+
+.order-geocode-compact {
+  font-size: 0.875rem;
+}
+
+.order-geocode-partial,
+.order-geocode-pending {
+  color: #b45309;
+}
+
+fieldset.module-picker {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+fieldset.module-picker legend {
+  padding: 0 0.5rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .error { color: var(--danger); margin: 1rem 0; }
 .grounded-banner { background: #450a0a; border: 1px solid var(--danger); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
 
@@ -186,3 +340,6 @@ button.secondary { background: var(--border); }
 }
 .module-picker legend { color: var(--muted); font-size: 0.875rem; padding: 0 0.25rem; }
 .checkbox-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.api-key-reveal { margin: 1rem 0; padding: 1rem; border: 1px solid var(--accent); background: var(--surface); }
+.api-key-reveal h3 { margin: 0 0 0.5rem; }
+.api-key-secret { display: block; padding: 0.75rem; margin: 0.75rem 0; word-break: break-all; background: var(--bg); border-radius: 6px; font-size: 0.875rem; }

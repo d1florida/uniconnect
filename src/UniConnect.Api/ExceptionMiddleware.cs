@@ -64,6 +64,10 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
             || (message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
                 && message.Contains("Vin", StringComparison.OrdinalIgnoreCase)))
             return "A vehicle with this VIN already exists.";
+        if (message.Contains("IX_Vehicles_TenantId_VehicleNumber", StringComparison.OrdinalIgnoreCase)
+            || (message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
+                && message.Contains("VehicleNumber", StringComparison.OrdinalIgnoreCase)))
+            return "A vehicle with this vehicle ID already exists in this fleet.";
         if (message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
             return "This record already exists.";
         if (message.Contains("violates not-null", StringComparison.OrdinalIgnoreCase))

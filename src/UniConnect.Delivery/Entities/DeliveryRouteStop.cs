@@ -7,6 +7,7 @@ public class DeliveryRouteStop
     public Guid Id { get; set; }
     public Guid RouteId { get; set; }
     public int Sequence { get; set; }
+    public Guid? DeliveryOrderId { get; set; }
     public DeliveryStopType StopType { get; set; }
     public DeliveryStopStatus Status { get; set; }
     public string Address { get; set; } = string.Empty;

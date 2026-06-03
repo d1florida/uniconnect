@@ -1,0 +1,71 @@
+using System.Text.Json;
+using UniConnect.RoutePlanning.DTOs;
+
+namespace UniConnect.RoutePlanning.Routing;
+
+public static class PlanProposalSync
+{
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    public static IReadOnlyList<PlannedRouteProposalDto> RefreshFromOrders(
+        IReadOnlyList<PlannedRouteProposalDto> proposals,
+        IReadOnlyDictionary<Guid, OrderStopSnapshot> orders)
+    {
+        if (proposals.Count == 0 || orders.Count == 0)
+            return proposals;
+
+        return proposals
+            .Select(proposal => proposal with
+            {
+                Stops = proposal.Stops.Select(stop => RefreshStop(stop, orders)).ToList(),
+            })
+            .ToList();
+    }
+
+    public static IReadOnlyList<PlannedRouteProposalDto> Deserialize(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<PlannedRouteProposalDto>>(json, JsonOptions) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    public static string Serialize(IReadOnlyList<PlannedRouteProposalDto> proposals) =>
+        JsonSerializer.Serialize(proposals, JsonOptions);
+
+    private static PlannedStopDto RefreshStop(
+        PlannedStopDto stop,
+        IReadOnlyDictionary<Guid, OrderStopSnapshot> orders)
+    {
+        if (!stop.OrderId.HasValue || !orders.TryGetValue(stop.OrderId.Value, out var order))
+            return stop;
+
+        return stop.StopType switch
+        {
+            "Pickup" => stop with
+            {
+                Address = order.PickupAddress,
+                RecipientName = order.RecipientName,
+                ParcelDescription = order.ParcelDescription,
+                Latitude = order.PickupLatitude,
+                Longitude = order.PickupLongitude,
+            },
+            "Dropoff" => stop with
+            {
+                Address = order.DeliveryAddress,
+                RecipientName = order.RecipientName,
+                ParcelDescription = order.ParcelDescription,
+                Latitude = order.DeliveryLatitude,
+                Longitude = order.DeliveryLongitude,
+            },
+            _ => stop,
+        };
+    }
+}

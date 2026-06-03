@@ -50,6 +50,8 @@ public class RoboTaxiService(AppDbContext db, ICurrentUserService currentUser) :
             Make = request.Make,
             Model = request.Model,
             Year = request.Year,
+            Category = request.Category,
+            VehicleNumber = request.VehicleNumber.Trim(),
             LicensePlate = request.LicensePlate,
             CurrentMileage = request.CurrentMileage,
             Status = VehicleStatus.Active
@@ -98,7 +100,7 @@ public class RoboTaxiService(AppDbContext db, ICurrentUserService currentUser) :
         return vehicles
             .Where(v => profiles.ContainsKey(v.Id))
             .Select(v => new RoboTaxiTrackingDto(
-                v.Id, v.LicensePlate, profiles[v.Id].OperationalState, locs.GetValueOrDefault(v.Id)))
+                v.Id, v.Category, v.VehicleNumber, v.LicensePlate, profiles[v.Id].OperationalState, locs.GetValueOrDefault(v.Id)))
             .ToList();
     }
 
@@ -131,7 +133,7 @@ public class RoboTaxiService(AppDbContext db, ICurrentUserService currentUser) :
     }
 
     private static RoboTaxiVehicleDto MapVehicle(Vehicle v, RoboTaxiProfile p, LocationDto? loc) =>
-        new(v.Id, v.TenantId, v.Vin, v.Make, v.Model, v.Year, v.LicensePlate, v.CurrentMileage, MapProfile(p), loc);
+        new(v.Id, v.TenantId, v.Vin, v.Make, v.Model, v.Year, v.Category, v.VehicleNumber, v.LicensePlate, v.CurrentMileage, MapProfile(p), loc);
 
     private static RoboTaxiProfileDto MapProfile(RoboTaxiProfile p) =>
         new(p.VehicleId, p.AutonomyLevel, p.OperationalState, p.SoftwareVersion, p.BatteryPercent,

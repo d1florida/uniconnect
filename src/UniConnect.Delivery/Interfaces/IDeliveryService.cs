@@ -1,5 +1,4 @@
 using UniConnect.Delivery.DTOs;
-using UniConnect.Delivery.Enums;
 using UniConnect.GeneralFleet.DTOs;
 
 namespace UniConnect.Delivery.Interfaces;
@@ -7,14 +6,14 @@ namespace UniConnect.Delivery.Interfaces;
 public interface IDeliveryService
 {
     Task<DeliveryDashboardDto> GetDashboardAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<BusinessAccountDto>> GetBusinessAccountsAsync(Guid tenantId, CancellationToken ct = default);
-    Task<BusinessAccountDto> CreateBusinessAccountAsync(Guid tenantId, CreateBusinessAccountRequest request, CancellationToken ct = default);
-    Task<IReadOnlyList<DeliveryOrderDto>> GetOrdersAsync(Guid tenantId, DeliveryChannel? channel, CancellationToken ct = default);
+    Task<IReadOnlyList<DeliveryOrderDto>> GetOrdersAsync(Guid tenantId, CancellationToken ct = default);
     Task<DeliveryOrderDto?> GetOrderAsync(Guid orderId, CancellationToken ct = default);
     Task<DeliveryOrderDto> CreateOrderAsync(Guid tenantId, CreateDeliveryOrderRequest request, CancellationToken ct = default);
+    Task<DeliveryOrderDto> UpdateOrderAsync(Guid orderId, UpdateDeliveryOrderRequest request, CancellationToken ct = default);
     Task<DeliveryOrderDto> UpdateStatusAsync(Guid orderId, UpdateDeliveryStatusRequest request, CancellationToken ct = default);
     Task<DeliveryOrderDto> AssignAsync(Guid orderId, AssignDeliveryRequest request, CancellationToken ct = default);
-    Task<IReadOnlyList<DeliveryVehicleDto>> GetVehiclesAsync(Guid tenantId, CancellationToken ct = default);
+    Task<IReadOnlyList<DeliveryVehicleDto>> GetVehiclesAsync(Guid tenantId, Guid? depotId = null, CancellationToken ct = default);
+    Task<DeliveryVehicleDto> AssignVehicleHomeDepotAsync(Guid tenantId, Guid vehicleId, AssignVehicleHomeDepotRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<DeliveryTrackingDto>> GetTrackingAsync(Guid tenantId, CancellationToken ct = default);
 
     Task<IReadOnlyList<DeliveryRouteDto>> GetRoutesAsync(Guid tenantId, CancellationToken ct = default);
@@ -28,4 +27,9 @@ public interface IDeliveryService
     Task<DeliveryRouteDetailDto> ReorderRouteStopsAsync(Guid routeId, ReorderRouteStopsRequest request, CancellationToken ct = default);
     Task DeleteRouteStopAsync(Guid routeId, Guid stopId, CancellationToken ct = default);
     Task<DeliveryRouteStopDto> UpdateStopStatusAsync(Guid routeId, Guid stopId, UpdateStopStatusRequest request, CancellationToken ct = default);
+    Task SyncRouteOrderAssignmentsAsync(Guid routeId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<DeliveryOrderDto>> GetPartnerOrdersAsync(CancellationToken ct = default);
+    Task<DeliveryOrderDto?> GetPartnerOrderAsync(Guid orderId, CancellationToken ct = default);
+    Task<DeliveryOrderDto> CreatePartnerOrderAsync(CreateDeliveryOrderRequest request, CancellationToken ct = default);
 }

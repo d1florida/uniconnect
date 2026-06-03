@@ -7,7 +7,7 @@ Modular fleet SaaS with three **products** on a shared **platform**:
 | **Platform** (`UniConnect.Tenant`, `UniConnect.Application`) | Tenant records, `ProductModule`, JWT auth, `ITenantService` |
 | **General Fleet** (`UniConnect.GeneralFleet`) | Conventional fleet maintenance + GPS tracking |
 | **Robo-Taxi** (`UniConnect.RoboTaxi`) | Autonomous passenger AV operations |
-| **Delivery** (`UniConnect.Delivery`) | B2B/B2C logistics (conventional + autonomous vehicles) |
+| **Delivery** (`UniConnect.Delivery`) | Logistics (conventional + autonomous vehicles) |
 
 ## Stack
 
@@ -66,7 +66,8 @@ Web: http://localhost:5173 — you will be redirected to **Sign in**.
 |-------|----------------|
 | `fleet@demo.local` | General Fleet (Demo General Fleet) |
 | `av@demo.local` | Robo-Taxi (Demo AV Fleet) |
-| `delivery@demo.local` | Delivery (Demo Delivery Fleet) |
+| `delivery@demo.local` | Delivery admin (Demo Delivery Fleet) |
+| `delivery.ops@demo.local` | Delivery operator (same tenant, no Settings admin) |
 | `admin@demo.local` | Platform admin (all products) |
 
 ## Module map
@@ -77,6 +78,8 @@ Web: http://localhost:5173 — you will be redirected to **Sign in**.
 | General Fleet | `General` | `/api/fleet` | `/`, `/fleet/tenants/:id/…` |
 | Robo-Taxi | `RoboTaxi` | `/api/robo-taxis` | `/robo-taxis`, … |
 | Delivery | `Delivery` | `/api/delivery` | `/delivery`, … |
+| Route planning | `RoutePlanning` | `/api/route-planning` | `/delivery/fleets/:id/plan` |
+| Insights | `Insights` | `/api/insights` | `/insights` |
 
 Platform admins create and manage tenants via `/api/tenants` (one or more product modules per tenant). General Fleet vehicle/maintenance/tracking endpoints live under `/api/fleet/...`.
 
@@ -89,6 +92,8 @@ src/
   UniConnect.GeneralFleet/   # General Fleet product (vehicles, maintenance, GPS)
   UniConnect.RoboTaxi/       # Robo-Taxi product
   UniConnect.Delivery/       # Delivery product
+  UniConnect.RoutePlanning/  # Route planning enhancement (requires Delivery)
+  UniConnect.Insights/       # Analytics + LLM report bundles (requires Delivery)
   UniConnect.Infrastructure/ # EF Core, implementations
   UniConnect.Api/            # HTTP API
 web/uniconnect-web/          # React SPA (modules/fleets, general-fleet, robo-taxi, delivery)
@@ -100,16 +105,42 @@ Development seed includes:
 
 - **Demo General Fleet** — conventional vehicles, maintenance, GPS pings
 - **Demo AV Fleet** — robo-taxi units with operational states
-- **Demo Delivery Fleet** — B2B/B2C orders, conventional + AV delivery van
+- **Demo Delivery Fleet** — delivery orders, conventional + AV delivery van
 
 ## Current app features
 
 - JWT auth with **tenant-scoped** data access (each operator sees only their tenant)
+- **Multi-user tenants** — admins invite team members with per-user product access (`User.ModuleAccess ∩ Tenant.Modules`)
+- **Route planning** — greedy multi-vehicle plan proposals (requires `RoutePlanning` module)
+- **Insights** — operational event log, driver/vehicle/customer/planner analytics, LLM-ready JSON reports
+- **Tenant roles** — `Admin` (org, team, API keys) vs `Operator` (products only)
 - Log maintenance from the vehicle detail page
-- Create B2B/B2C delivery orders from the UI
-- Advance delivery status workflow on order detail
-- Loading and error states on key pages
+- Create delivery orders from the UI
+- Tenant API keys in **Settings** for partner integrations
+- Partner delivery API (`X-Api-Key`): create and track orders
+- **Fleet assets** — shared `Vehicles` table with `AssetCategory` (tractor, trailer, light vehicle, etc.) and tenant-unique **vehicle ID** (`VehicleNumber`). Create/edit under General Fleet → **Assets**; Delivery and Robo-Taxi list the same records.
+
+## Partner API (delivery)
+
+Auth: `X-Api-Key` header (tenant-scoped key from **Settings → API keys**).
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| `POST` | `/api/delivery/partner/orders` | Create order |
+| `GET` | `/api/delivery/partner/orders` | List tenant orders |
+| `GET` | `/api/delivery/partner/orders/{id}` | Order status |
+
+Demo partner key (delivery tenant): `uc_live_DemoDeliveryPartner0123456`
+
+### Tenant team API (admin JWT)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| `GET` | `/api/tenants/me/users` | List tenant users |
+| `POST` | `/api/tenants/me/users` | Invite user (email, role, modules, password) |
+| `PATCH` | `/api/tenants/me/users/{id}` | Update role, modules, or active status |
+| `DELETE` | `/api/tenants/me/users/{id}` | Remove user |
 
 ## Phase 2 (next)
 
-Stripe, telematics webhooks, route optimization, B2B API keys, proof-of-delivery, multi-fleet users per account.
+Stripe, telematics webhooks, route optimization, proof-of-delivery.

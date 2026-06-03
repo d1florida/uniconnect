@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using UniConnect.Application;
 using UniConnect.Application.Interfaces;
 using UniConnect.Infrastructure.Data;
@@ -15,7 +16,8 @@ namespace UniConnect.Infrastructure.Services;
 public class TenantService(
     AppDbContext db,
     UserManager<ApplicationUser> userManager,
-    ICurrentUserService currentUser) : ITenantService
+    ICurrentUserService currentUser,
+    IOptions<IdentityOptions> identityOptions) : ITenantService
 {
     public async Task<IReadOnlyList<TenantDto>> GetTenantsAsync(ProductModule? module = null, CancellationToken ct = default)
     {
@@ -53,6 +55,7 @@ public class TenantService(
         var modules = ProductModuleHelper.Combine(request.Modules);
         if (modules == ProductModule.None)
             throw new ArgumentException("Select at least one product module.");
+        ProductModuleHelper.ValidateTenantModules(modules);
 
         var adminEmail = request.AdminEmail.Trim();
         var adminPassword = request.AdminPassword.Trim();
@@ -89,6 +92,9 @@ public class TenantService(
             Email = adminEmail,
             DisplayName = displayName,
             TenantId = tenant.Id,
+            TenantRole = TenantRole.Admin,
+            ModuleAccess = modules,
+            IsActive = true,
             EmailConfirmed = true
         };
 
@@ -117,7 +123,15 @@ public class TenantService(
             var modules = ProductModuleHelper.Combine(request.Modules);
             if (modules == ProductModule.None)
                 throw new ArgumentException("Select at least one product module.");
+            ProductModuleHelper.ValidateTenantModules(modules);
             tenant.Modules = modules;
+
+            var tenantUsers = await userManager.Users.Where(u => u.TenantId == tenantId).ToListAsync(ct);
+            foreach (var tenantUser in tenantUsers)
+            {
+                tenantUser.ModuleAccess &= modules;
+                await userManager.UpdateAsync(tenantUser);
+            }
         }
         if (request.ContactName is not null)
             tenant.ContactName = request.ContactName.Trim();
@@ -155,6 +169,9 @@ public class TenantService(
                     Email = newEmail,
                     DisplayName = displayName,
                     TenantId = tenant.Id,
+                    TenantRole = TenantRole.Admin,
+                    ModuleAccess = tenant.Modules,
+                    IsActive = true,
                     EmailConfirmed = true
                 };
                 var createResult = await userManager.CreateAsync(admin, adminPassword);
@@ -215,8 +232,8 @@ public class TenantService(
         var orders = await db.DeliveryOrders.Where(o => o.TenantId == tenantId).ToListAsync(ct);
         db.DeliveryOrders.RemoveRange(orders);
 
-        var accounts = await db.BusinessAccounts.Where(a => a.TenantId == tenantId).ToListAsync(ct);
-        db.BusinessAccounts.RemoveRange(accounts);
+        var apiKeys = await db.TenantApiKeys.Where(k => k.TenantId == tenantId).ToListAsync(ct);
+        db.TenantApiKeys.RemoveRange(apiKeys);
 
         var vehicleIds = await db.Vehicles.Where(v => v.TenantId == tenantId).Select(v => v.Id).ToListAsync(ct);
         if (vehicleIds.Count > 0)
@@ -253,11 +270,153 @@ public class TenantService(
             tenants.Count(m => ProductModuleHelper.HasModule(m, ProductModule.Delivery)));
     }
 
+    public async Task<MyTenantProfileDto> GetMyTenantAsync(CancellationToken ct = default)
+    {
+        var tenant = await LoadMyTenantAsync(ct);
+        var adminEmail = await GetAdminEmailAsync(tenant.Id, ct);
+        var user = await RequireCurrentTenantUserAsync(ct);
+        var effective = ProductModuleHelper.EffectiveModules(user.ModuleAccess, tenant.Modules);
+        return new MyTenantProfileDto(
+            ToDto(tenant, adminEmail),
+            GetPasswordPolicy(),
+            user.TenantRole,
+            user.TenantRole == TenantRole.Admin,
+            ProductModuleHelper.Expand(effective));
+    }
+
+    public async Task<TenantDto> UpdateMyTenantAsync(UpdateMyTenantRequest request, CancellationToken ct = default)
+    {
+        currentUser.EnsureTenantAdmin();
+        var tenant = await LoadMyTenantForUpdateAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new ArgumentException("Organization name is required.");
+        if (string.IsNullOrWhiteSpace(request.Slug))
+            throw new ArgumentException("Slug is required.");
+
+        var slug = NormalizeSlug(request.Slug);
+        await EnsureSlugAvailableAsync(slug, tenant.Id, ct);
+
+        tenant.Name = request.Name.Trim();
+        tenant.Slug = slug;
+        tenant.ContactName = request.ContactName.Trim();
+        tenant.ContactEmail = request.ContactEmail.Trim();
+        tenant.ContactPhone = request.ContactPhone.Trim();
+
+        await db.SaveChangesAsync(ct);
+        var adminEmail = await GetAdminEmailAsync(tenant.Id, ct);
+        return ToDto(tenant, adminEmail);
+    }
+
+    public async Task<TenantDto> UpdateMyTenantAdminAsync(UpdateMyTenantAdminRequest request, CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId();
+        if (!currentUser.UserId.HasValue)
+            throw new ForbiddenException("You must be signed in to update your account.");
+
+        var user = await userManager.FindByIdAsync(currentUser.UserId.Value.ToString())
+            ?? throw new InvalidOperationException("User not found.");
+
+        if (user.TenantId != tenantId)
+            throw new ForbiddenException("You do not have access to this tenant.");
+
+        if (request.Email is not null)
+        {
+            var newEmail = request.Email.Trim();
+            if (string.IsNullOrWhiteSpace(newEmail))
+                throw new ArgumentException("Email cannot be empty.");
+
+            if (!string.Equals(user.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var existing = await userManager.FindByEmailAsync(newEmail);
+                if (existing is not null && existing.Id != user.Id)
+                    throw new ArgumentException("A user with this email already exists.");
+
+                user.Email = newEmail;
+                user.UserName = newEmail;
+                user.NormalizedEmail = userManager.NormalizeEmail(newEmail);
+                user.NormalizedUserName = userManager.NormalizeName(newEmail);
+                var updateResult = await userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                    throw new ArgumentException(FormatIdentityErrors(updateResult.Errors));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var resetResult = await userManager.ResetPasswordAsync(user, token, request.NewPassword.Trim());
+            if (!resetResult.Succeeded)
+                throw new ArgumentException(FormatIdentityErrors(resetResult.Errors));
+        }
+
+        var tenant = await db.Tenants.AsNoTracking().FirstAsync(t => t.Id == tenantId, ct);
+        return ToDto(tenant, user.Email);
+    }
+
+    private Guid RequireTenantId()
+    {
+        if (!currentUser.TenantId.HasValue)
+            throw new ForbiddenException("Tenant settings are only available to tenant operators.");
+        return currentUser.TenantId.Value;
+    }
+
+    private async Task<TenantEntity> LoadMyTenantAsync(CancellationToken ct)
+    {
+        var tenantId = RequireTenantId();
+        return await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantId, ct)
+            ?? throw new InvalidOperationException("Tenant not found.");
+    }
+
+    private async Task<TenantEntity> LoadMyTenantForUpdateAsync(CancellationToken ct)
+    {
+        var tenantId = RequireTenantId();
+        return await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct)
+            ?? throw new InvalidOperationException("Tenant not found.");
+    }
+
+    private async Task EnsureSlugAvailableAsync(string slug, Guid tenantId, CancellationToken ct)
+    {
+        var taken = await db.Tenants.AsNoTracking()
+            .AnyAsync(t => t.Slug == slug && t.Id != tenantId, ct);
+        if (taken)
+            throw new ArgumentException($"Slug \"{slug}\" is already in use.");
+    }
+
+    private static string NormalizeSlug(string slug) =>
+        slug.Trim().ToLowerInvariant();
+
+    private PasswordPolicyDto GetPasswordPolicy()
+    {
+        var pwd = identityOptions.Value.Password;
+        return new PasswordPolicyDto(
+            pwd.RequiredLength,
+            pwd.RequireDigit,
+            pwd.RequireUppercase,
+            pwd.RequireLowercase,
+            pwd.RequireNonAlphanumeric);
+    }
+
     private async Task<ApplicationUser?> GetAdminUserAsync(Guid tenantId, CancellationToken ct) =>
         await userManager.Users
+            .Where(u => u.TenantId == tenantId && u.TenantRole == TenantRole.Admin && u.IsActive)
+            .OrderBy(u => u.Email)
+            .FirstOrDefaultAsync(ct)
+        ?? await userManager.Users
             .Where(u => u.TenantId == tenantId)
             .OrderBy(u => u.Email)
             .FirstOrDefaultAsync(ct);
+
+    private async Task<ApplicationUser> RequireCurrentTenantUserAsync(CancellationToken ct)
+    {
+        if (!currentUser.UserId.HasValue)
+            throw new ForbiddenException("You must be signed in.");
+        var user = await userManager.FindByIdAsync(currentUser.UserId.Value.ToString())
+            ?? throw new InvalidOperationException("User not found.");
+        if (user.TenantId != RequireTenantId())
+            throw new ForbiddenException("You do not have access to this tenant.");
+        return user;
+    }
 
     private async Task<string?> GetAdminEmailAsync(Guid tenantId, CancellationToken ct) =>
         (await GetAdminUserAsync(tenantId, ct))?.Email;

@@ -26,7 +26,7 @@ export function Layout() {
               <NavLink to="/" end>General Fleet</NavLink>
               {fleetId && (
                 <>
-                  <NavLink to={`/fleet/fleets/${fleetId}/vehicles`}>Vehicles</NavLink>
+                  <NavLink to={`/fleet/fleets/${fleetId}/vehicles`}>Assets</NavLink>
                   <NavLink to={`/fleet/fleets/${fleetId}/tracking`}>Fleet map</NavLink>
                 </>
               )}
@@ -47,10 +47,22 @@ export function Layout() {
                 <>
                   <NavLink to={`/delivery/fleets/${fleetId}/orders`}>Orders</NavLink>
                   <NavLink to={`/delivery/fleets/${fleetId}/routes`}>Routes</NavLink>
+                  <NavLink to={`/delivery/fleets/${fleetId}/drivers`}>Drivers</NavLink>
+                  <NavLink to={`/delivery/fleets/${fleetId}/vehicles`}>Assets</NavLink>
+                  <NavLink to={`/delivery/fleets/${fleetId}/depots`}>Depots</NavLink>
                   <NavLink to={`/delivery/fleets/${fleetId}/map`}>Delivery map</NavLink>
                 </>
               )}
+              {fleetId && hasModule(user?.modules, 'RoutePlanning') && (
+                <NavLink to={`/delivery/fleets/${fleetId}/plan`}>Plan routes</NavLink>
+              )}
             </>
+          )}
+          {hasModule(user?.modules, 'Insights') && (
+            <NavLink to="/insights">Insights</NavLink>
+          )}
+          {fleetId && (
+            <NavLink to="/settings">Settings</NavLink>
           )}
         </nav>
         <button type="button" className="secondary logout-btn" onClick={logout}>

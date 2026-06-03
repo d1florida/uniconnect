@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniConnect.Delivery.DTOs;
-using UniConnect.Delivery.Enums;
 using UniConnect.Delivery.Interfaces;
+using UniConnect.Insights.DTOs;
+using UniConnect.Insights.Interfaces;
 
 namespace UniConnect.Api.Controllers;
 
@@ -10,31 +11,34 @@ namespace UniConnect.Api.Controllers;
 [ApiController]
 [Route("api/delivery")]
 [Tags("Delivery")]
-public class DeliveryController(IDeliveryService deliveryService) : ControllerBase
+public class DeliveryController(IDeliveryService deliveryService, IDriverDirectory drivers, IDepotDirectory depotDirectory) : ControllerBase
 {
     [HttpGet("dashboard")]
     public async Task<ActionResult<DeliveryDashboardDto>> GetDashboard(CancellationToken ct) =>
         Ok(await deliveryService.GetDashboardAsync(ct));
 
-    [HttpGet("tenants/{tenantId:guid}/business-accounts")]
-    public async Task<ActionResult<IReadOnlyList<BusinessAccountDto>>> GetBusinessAccounts(Guid tenantId, CancellationToken ct) =>
-        Ok(await deliveryService.GetBusinessAccountsAsync(tenantId, ct));
-
-    [HttpPost("tenants/{tenantId:guid}/business-accounts")]
-    public async Task<ActionResult<BusinessAccountDto>> CreateBusinessAccount(Guid tenantId, [FromBody] CreateBusinessAccountRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateBusinessAccountAsync(tenantId, request, ct));
-
     [HttpGet("tenants/{tenantId:guid}/orders")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryOrderDto>>> GetOrders(Guid tenantId, [FromQuery] DeliveryChannel? channel, CancellationToken ct) =>
-        Ok(await deliveryService.GetOrdersAsync(tenantId, channel, ct));
+    public async Task<ActionResult<IReadOnlyList<DeliveryOrderDto>>> GetOrders(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetOrdersAsync(tenantId, ct));
 
     [HttpPost("tenants/{tenantId:guid}/orders")]
     public async Task<ActionResult<DeliveryOrderDto>> CreateOrder(Guid tenantId, [FromBody] CreateDeliveryOrderRequest request, CancellationToken ct) =>
         Ok(await deliveryService.CreateOrderAsync(tenantId, request, ct));
 
     [HttpGet("tenants/{tenantId:guid}/vehicles")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryVehicleDto>>> GetVehicles(Guid tenantId, CancellationToken ct) =>
-        Ok(await deliveryService.GetVehiclesAsync(tenantId, ct));
+    public async Task<ActionResult<IReadOnlyList<DeliveryVehicleDto>>> GetVehicles(
+        Guid tenantId,
+        [FromQuery] Guid? depotId,
+        CancellationToken ct) =>
+        Ok(await deliveryService.GetVehiclesAsync(tenantId, depotId, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/vehicles/{vehicleId:guid}/home-depot")]
+    public async Task<ActionResult<DeliveryVehicleDto>> AssignVehicleHomeDepot(
+        Guid tenantId,
+        Guid vehicleId,
+        [FromBody] AssignVehicleHomeDepotRequest request,
+        CancellationToken ct) =>
+        Ok(await deliveryService.AssignVehicleHomeDepotAsync(tenantId, vehicleId, request, ct));
 
     [HttpGet("tenants/{tenantId:guid}/tracking")]
     public async Task<ActionResult<IReadOnlyList<DeliveryTrackingDto>>> GetTracking(Guid tenantId, CancellationToken ct) =>
@@ -46,6 +50,10 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
         var order = await deliveryService.GetOrderAsync(orderId, ct);
         return order is null ? NotFound() : Ok(order);
     }
+
+    [HttpPut("orders/{orderId:guid}")]
+    public async Task<ActionResult<DeliveryOrderDto>> UpdateOrder(Guid orderId, [FromBody] UpdateDeliveryOrderRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.UpdateOrderAsync(orderId, request, ct));
 
     [HttpPatch("orders/{orderId:guid}/status")]
     public async Task<ActionResult<DeliveryOrderDto>> UpdateStatus(Guid orderId, [FromBody] UpdateDeliveryStatusRequest request, CancellationToken ct) =>
@@ -104,4 +112,42 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
     [HttpPatch("routes/{routeId:guid}/stops/{stopId:guid}/status")]
     public async Task<ActionResult<DeliveryRouteStopDto>> UpdateStopStatus(Guid routeId, Guid stopId, [FromBody] UpdateStopStatusRequest request, CancellationToken ct) =>
         Ok(await deliveryService.UpdateStopStatusAsync(routeId, stopId, request, ct));
+
+    [HttpGet("tenants/{tenantId:guid}/drivers")]
+    public async Task<ActionResult<IReadOnlyList<DriverDto>>> GetDrivers(Guid tenantId, CancellationToken ct) =>
+        Ok(await drivers.GetDriversAsync(tenantId, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/drivers")]
+    public async Task<ActionResult<DriverDto>> CreateDriver(Guid tenantId, [FromBody] CreateDriverRequest request, CancellationToken ct) =>
+        Ok(await drivers.CreateDriverAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/drivers/{driverId:guid}")]
+    public async Task<ActionResult<DriverDto>> UpdateDriver(Guid tenantId, Guid driverId, [FromBody] UpdateDriverRequest request, CancellationToken ct) =>
+        Ok(await drivers.UpdateDriverAsync(tenantId, driverId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/drivers/{driverId:guid}")]
+    public async Task<IActionResult> DeleteDriver(Guid tenantId, Guid driverId, CancellationToken ct)
+    {
+        await drivers.DeleteDriverAsync(tenantId, driverId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("tenants/{tenantId:guid}/depots")]
+    public async Task<ActionResult<IReadOnlyList<DepotDto>>> GetDepots(Guid tenantId, [FromQuery] bool includeInactive = false, CancellationToken ct = default) =>
+        Ok(await depotDirectory.GetDepotsAsync(tenantId, includeInactive, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/depots")]
+    public async Task<ActionResult<DepotDto>> CreateDepot(Guid tenantId, [FromBody] CreateDepotRequest request, CancellationToken ct) =>
+        Ok(await depotDirectory.CreateDepotAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/depots/{depotId:guid}")]
+    public async Task<ActionResult<DepotDto>> UpdateDepot(Guid tenantId, Guid depotId, [FromBody] UpdateDepotRequest request, CancellationToken ct) =>
+        Ok(await depotDirectory.UpdateDepotAsync(tenantId, depotId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/depots/{depotId:guid}")]
+    public async Task<IActionResult> DeleteDepot(Guid tenantId, Guid depotId, CancellationToken ct)
+    {
+        await depotDirectory.DeleteDepotAsync(tenantId, depotId, ct);
+        return NoContent();
+    }
 }

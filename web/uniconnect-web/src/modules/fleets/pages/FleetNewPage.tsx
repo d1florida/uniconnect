@@ -18,9 +18,17 @@ export function FleetNewPage() {
   const [error, setError] = useState('');
 
   const toggleModule = (module: FleetModule) => {
-    setModules((prev) =>
-      prev.includes(module) ? prev.filter((m) => m !== module) : [...prev, module],
-    );
+    setModules((prev) => {
+      if (prev.includes(module)) {
+        let next = prev.filter((m) => m !== module);
+        if (module === 'Delivery') next = next.filter((m) => m !== 'RoutePlanning' && m !== 'Insights');
+        return next;
+      }
+      let next = [...prev, module];
+      const meta = ALL_FLEET_MODULES.find((m) => m.value === module);
+      if (meta?.requiresDelivery && !next.includes('Delivery')) next.push('Delivery');
+      return next;
+    });
   };
 
   const create = async () => {

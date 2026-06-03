@@ -46,7 +46,7 @@ export function FleetDashboardPage() {
       </div>
       {fleetId && (
         <p>
-          <Link to={`/fleet/fleets/${fleetId}/vehicles`}>Manage vehicles</Link>
+          <Link to={`/fleet/fleets/${fleetId}/vehicles`}>Manage assets</Link>
           {' · '}
           <Link to={`/fleet/fleets/${fleetId}/tracking`}>Fleet map</Link>
         </p>

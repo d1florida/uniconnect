@@ -13,4 +13,6 @@ public record UserProfileDto(
     Guid? TenantId,
     string? TenantName,
     IReadOnlyList<ProductModule> Modules,
-    bool IsPlatformAdmin);
+    bool IsPlatformAdmin,
+    TenantRole? TenantRole,
+    bool IsTenantAdmin);

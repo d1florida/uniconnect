@@ -38,3 +38,28 @@ public record TenantDashboardDto(
     int GeneralTenants,
     int RoboTaxiTenants,
     int DeliveryTenants);
+
+public record PasswordPolicyDto(
+    int MinLength,
+    bool RequireDigit,
+    bool RequireUppercase,
+    bool RequireLowercase,
+    bool RequireNonAlphanumeric);
+
+public record MyTenantProfileDto(
+    TenantDto Tenant,
+    PasswordPolicyDto PasswordPolicy,
+    TenantRole TenantRole,
+    bool IsTenantAdmin,
+    IReadOnlyList<ProductModule> ModuleAccess);
+
+public record UpdateMyTenantRequest(
+    string Name,
+    string Slug,
+    string ContactName,
+    string ContactEmail,
+    string ContactPhone);
+
+public record UpdateMyTenantAdminRequest(
+    string? Email,
+    string? NewPassword);

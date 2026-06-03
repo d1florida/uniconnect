@@ -16,10 +16,17 @@ import { RoboTaxiVehicleDetailPage } from './modules/robo-taxi/pages/RoboTaxiVeh
 import { DeliveryDashboardPage } from './modules/delivery/pages/DeliveryDashboardPage';
 import { DeliveryOrdersPage } from './modules/delivery/pages/DeliveryOrdersPage';
 import { DeliveryOrderDetailPage } from './modules/delivery/pages/DeliveryOrderDetailPage';
-import { DeliveryBusinessAccountsPage } from './modules/delivery/pages/DeliveryBusinessAccountsPage';
 import { DeliveryFleetMapPage } from './modules/delivery/pages/DeliveryFleetMapPage';
 import { DeliveryRoutesPage } from './modules/delivery/pages/DeliveryRoutesPage';
 import { DeliveryRouteDetailPage } from './modules/delivery/pages/DeliveryRouteDetailPage';
+import { DeliveryPlanPage } from './modules/delivery/pages/DeliveryPlanPage';
+import { DeliveryDriversPage } from './modules/delivery/pages/DeliveryDriversPage';
+import { DeliveryDepotsPage } from './modules/delivery/pages/DeliveryDepotsPage';
+import { DeliveryVehiclesPage } from './modules/delivery/pages/DeliveryVehiclesPage';
+import { InsightsDashboardPage } from './modules/insights/pages/InsightsDashboardPage';
+import { InsightsSubjectPage } from './modules/insights/pages/InsightsSubjectPage';
+import { TenantOperatorRoute } from './auth/TenantOperatorRoute';
+import { TenantSettingsPage } from './modules/settings/pages/TenantSettingsPage';
 import './App.css';
 
 function RedirectLegacyTenantRoute() {
@@ -67,6 +74,15 @@ function App() {
           <Route path="fleets/:fleetId" element={<RedirectLegacyTenantRoute />} />
           <Route path="fleets" element={<Navigate to="/tenants" replace />} />
 
+          <Route
+            path="settings"
+            element={
+              <TenantOperatorRoute>
+                <TenantSettingsPage />
+              </TenantOperatorRoute>
+            }
+          />
+
           <Route index element={<FleetDashboardPage />} />
           <Route path="fleet/fleets/:fleetId/vehicles" element={<FleetVehiclesPage />} />
           <Route path="fleet/fleets/:fleetId/tracking" element={<FleetTrackingPage />} />
@@ -78,11 +94,20 @@ function App() {
 
           <Route path="delivery" element={<DeliveryDashboardPage />} />
           <Route path="delivery/fleets/:fleetId/orders" element={<DeliveryOrdersPage />} />
-          <Route path="delivery/fleets/:fleetId/accounts" element={<DeliveryBusinessAccountsPage />} />
           <Route path="delivery/fleets/:fleetId/map" element={<DeliveryFleetMapPage />} />
           <Route path="delivery/fleets/:fleetId/routes" element={<DeliveryRoutesPage />} />
+          <Route path="delivery/fleets/:fleetId/drivers" element={<DeliveryDriversPage />} />
+          <Route path="delivery/fleets/:fleetId/depots" element={<DeliveryDepotsPage />} />
+          <Route path="delivery/fleets/:fleetId/vehicles" element={<DeliveryVehiclesPage />} />
           <Route path="delivery/routes/:routeId" element={<DeliveryRouteDetailPage />} />
           <Route path="delivery/orders/:orderId" element={<DeliveryOrderDetailPage />} />
+          <Route path="delivery/fleets/:fleetId/plan" element={<DeliveryPlanPage />} />
+
+          <Route path="insights" element={<InsightsDashboardPage />} />
+          <Route path="insights/drivers/:driverId" element={<InsightsSubjectPage kind="drivers" />} />
+          <Route path="insights/customers/:customerId" element={<InsightsSubjectPage kind="customers" />} />
+          <Route path="insights/planners/:plannerId" element={<InsightsSubjectPage kind="planners" />} />
+          <Route path="insights/vehicles/:vehicleId" element={<InsightsSubjectPage kind="vehicles" />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

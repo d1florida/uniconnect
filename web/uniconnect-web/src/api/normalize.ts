@@ -12,6 +12,8 @@ type RawUserProfile = {
   fleetName?: string;
   modules?: FleetModule[];
   fleetType?: FleetModule | null;
+  tenantRole?: import('./types').TenantRole;
+  isTenantAdmin?: boolean;
   isPlatformAdmin: boolean;
 };
 
@@ -43,6 +45,8 @@ export function normalizeUserProfile(raw: RawUserProfile) {
     fleetId: raw.tenantId ?? raw.fleetId,
     fleetName: raw.tenantName ?? raw.fleetName,
     modules: modulesFromLegacy(raw),
+    tenantRole: raw.tenantRole,
+    isTenantAdmin: raw.isTenantAdmin ?? raw.tenantRole === 'Admin',
     isPlatformAdmin: raw.isPlatformAdmin,
   };
 }

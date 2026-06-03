@@ -1,19 +1,42 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../../api/client';
-import type { MaintenanceRecordDto, MaintenanceStatus, ServiceType, VehicleDto, VehicleLocationDto } from '../../../api/types';
+import type { DepotDto, MaintenanceRecordDto, MaintenanceStatus, ServiceType, UpdateVehicleRequest, VehicleDto, VehicleLocationDto, VehicleStatus } from '../../../api/types';
 import { FleetMap } from '../../../components/FleetMap';
 import { ErrorAlert } from '../../../components/ErrorAlert';
 import { Loading } from '../../../components/Loading';
+import { useAuth } from '../../../auth/AuthContext';
+import { hasModule } from '../../../utils/fleetModules';
+import { ASSET_CATEGORIES, assetCategoryLabel } from '../../../utils/assetLabels';
+import { vehiclePrimaryLabel } from '../../../utils/vehicleLabels';
+
+function vehicleToForm(vehicle: VehicleDto): UpdateVehicleRequest {
+  return {
+    vin: vehicle.vin,
+    make: vehicle.make,
+    model: vehicle.model,
+    year: vehicle.year,
+    category: vehicle.category,
+    vehicleNumber: vehicle.vehicleNumber,
+    licensePlate: vehicle.licensePlate,
+    currentMileage: vehicle.currentMileage,
+    status: vehicle.status,
+  };
+}
 
 export function FleetVehicleDetailPage() {
   const { vehicleId } = useParams<{ vehicleId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [vehicle, setVehicle] = useState<VehicleDto | null>(null);
+  const [depots, setDepots] = useState<DepotDto[]>([]);
+  const [savingDepot, setSavingDepot] = useState(false);
   const [maintenance, setMaintenance] = useState<MaintenanceRecordDto[]>([]);
   const [locations, setLocations] = useState<VehicleLocationDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [editForm, setEditForm] = useState<UpdateVehicleRequest | null>(null);
   const [lat, setLat] = useState('37.775');
   const [lng, setLng] = useState('-122.418');
   const [maintForm, setMaintForm] = useState({
@@ -36,17 +59,67 @@ export function FleetVehicleDetailPage() {
         api.get<VehicleLocationDto[]>(`/api/fleet/vehicles/${vehicleId}/locations`),
       ]);
       setVehicle(v);
+      setEditForm(vehicleToForm(v));
       setMaintenance(m);
       setLocations(locs);
       setMaintForm((f) => ({ ...f, mileageAtService: v.currentMileage }));
+      if (hasModule(user?.modules, 'Delivery')) {
+        const depotList = await api.get<DepotDto[]>(`/api/delivery/tenants/${v.tenantId}/depots`);
+        setDepots(depotList);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [vehicleId]);
+  }, [vehicleId, user?.modules]);
+
+  const assignHomeDepot = async (homeDepotId: string) => {
+    if (!vehicle) return;
+    setSavingDepot(true);
+    setError('');
+    try {
+      await api.patch(`/api/delivery/tenants/${vehicle.tenantId}/vehicles/${vehicle.id}/home-depot`, {
+        homeDepotId: homeDepotId || null,
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update home depot');
+    } finally {
+      setSavingDepot(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
+
+  const saveVehicle = async () => {
+    if (!vehicleId || !editForm) return;
+    if (!editForm.vin.trim() || !editForm.make.trim() || !editForm.model.trim() || !editForm.vehicleNumber.trim() || !editForm.licensePlate.trim()) {
+      setError('VIN, make, model, vehicle ID, and license plate are required.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.put(`/api/fleet/vehicles/${vehicleId}`, {
+        ...editForm,
+        vin: editForm.vin.trim(),
+        make: editForm.make.trim(),
+        model: editForm.model.trim(),
+        vehicleNumber: editForm.vehicleNumber.trim(),
+        licensePlate: editForm.licensePlate.trim(),
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save vehicle');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetEditForm = () => {
+    if (vehicle) setEditForm(vehicleToForm(vehicle));
+  };
 
   const recordLocation = async () => {
     await api.post(`/api/fleet/vehicles/${vehicleId}/locations`, {
@@ -66,7 +139,7 @@ export function FleetVehicleDetailPage() {
 
   const remove = async () => {
     if (!vehicleId || !vehicle) return;
-    if (!window.confirm(`Delete ${vehicle.licensePlate}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete vehicle ${vehiclePrimaryLabel(vehicle)}? This cannot be undone.`)) return;
     try {
       setError('');
       await api.delete(`/api/fleet/vehicles/${vehicleId}`);
@@ -77,18 +150,36 @@ export function FleetVehicleDetailPage() {
   };
 
   if (loading) return <Loading />;
+  const editDirty = vehicle && editForm
+    ? JSON.stringify(editForm) !== JSON.stringify(vehicleToForm(vehicle))
+    : false;
   const markers = vehicle?.latestLocation
-    ? [{ id: vehicle.id, label: vehicle.licensePlate, lat: vehicle.latestLocation.latitude, lng: vehicle.latestLocation.longitude }]
+    ? [{ id: vehicle.id, label: vehiclePrimaryLabel(vehicle), lat: vehicle.latestLocation.latitude, lng: vehicle.latestLocation.longitude }]
     : [];
 
   return (
     <div>
       <div className="page-header">
-        <h2>{vehicle?.licensePlate ?? 'Vehicle'}</h2>
+        <h2>{vehicle ? vehiclePrimaryLabel(vehicle) : 'Vehicle'}</h2>
         <p>
-          {vehicle && `${vehicle.year} ${vehicle.make} ${vehicle.model}`}
           {vehicle && (
-            <> · <Link to={`/fleet/fleets/${vehicle.tenantId}/vehicles`}>Back to fleet</Link></>
+            <>
+              {assetCategoryLabel(vehicle.category)}
+              {' · '}
+              ID {vehicle.vehicleNumber}
+              {' · '}
+              {vehicle.year} {vehicle.make} {vehicle.model}
+            </>
+          )}
+          {vehicle && (
+            <>
+              {' · '}
+              {hasModule(user?.modules, 'General') ? (
+                <Link to={`/fleet/fleets/${vehicle.tenantId}/vehicles`}>Back to fleet</Link>
+              ) : hasModule(user?.modules, 'Delivery') ? (
+                <Link to={`/delivery/fleets/${vehicle.tenantId}/vehicles`}>Back to vehicles</Link>
+              ) : null}
+            </>
           )}
         </p>
         {vehicle && (
@@ -96,6 +187,113 @@ export function FleetVehicleDetailPage() {
         )}
       </div>
       <ErrorAlert message={error} />
+      {vehicle && editForm && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <h3>Edit vehicle</h3>
+          <div className="form-row">
+            <label>
+              Asset type
+              <select
+                value={editForm.category}
+                onChange={(e) => setEditForm({ ...editForm, category: e.target.value as UpdateVehicleRequest['category'] })}
+              >
+                {ASSET_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{assetCategoryLabel(c)}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              VIN
+              <input value={editForm.vin} onChange={(e) => setEditForm({ ...editForm, vin: e.target.value })} />
+            </label>
+            <label>
+              Make
+              <input value={editForm.make} onChange={(e) => setEditForm({ ...editForm, make: e.target.value })} />
+            </label>
+            <label>
+              Model
+              <input value={editForm.model} onChange={(e) => setEditForm({ ...editForm, model: e.target.value })} />
+            </label>
+            <label>
+              Year
+              <input
+                type="number"
+                value={editForm.year}
+                onChange={(e) => setEditForm({ ...editForm, year: +e.target.value })}
+              />
+            </label>
+            <label>
+              Vehicle ID
+              <input
+                value={editForm.vehicleNumber}
+                onChange={(e) => setEditForm({ ...editForm, vehicleNumber: e.target.value })}
+                placeholder="e.g. 101"
+              />
+            </label>
+            <label>
+              License plate
+              <input
+                value={editForm.licensePlate}
+                onChange={(e) => setEditForm({ ...editForm, licensePlate: e.target.value })}
+              />
+            </label>
+            <label>
+              Mileage
+              <input
+                type="number"
+                value={editForm.currentMileage}
+                onChange={(e) => setEditForm({ ...editForm, currentMileage: +e.target.value })}
+              />
+            </label>
+            <label>
+              Status
+              <select
+                value={editForm.status}
+                onChange={(e) => setEditForm({ ...editForm, status: e.target.value as VehicleStatus })}
+              >
+                {(['Active', 'InShop', 'Retired'] as VehicleStatus[]).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="form-row">
+            <button
+              type="button"
+              onClick={() => void saveVehicle()}
+              disabled={saving || !editDirty}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="secondary" onClick={resetEditForm} disabled={saving || !editDirty}>
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
+      {hasModule(user?.modules, 'Delivery') && vehicle && (
+        <div className="form-row" style={{ marginBottom: '1rem' }}>
+          <label>
+            Home depot (delivery)
+            <select
+              value={vehicle.homeDepotId ?? ''}
+              disabled={savingDepot || depots.length === 0}
+              onChange={(e) => void assignHomeDepot(e.target.value)}
+            >
+              <option value="">— Unassigned —</option>
+              {depots.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </label>
+          {depots.length === 0 && (
+            <span className="muted">
+              {' '}
+              <Link to={`/delivery/fleets/${vehicle.tenantId}/depots`}>Add a depot</Link>
+            </span>
+          )}
+        </div>
+      )}
       <FleetMap markers={markers} />
       <div className="form-row" style={{ marginTop: '1rem' }}>
         <input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Lat" />

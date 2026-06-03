@@ -19,6 +19,10 @@ public class GeneralFleetController(IGeneralFleetService generalFleetService) : 
     public async Task<ActionResult<VehicleDto>> CreateVehicle(Guid tenantId, [FromBody] CreateVehicleRequest request, CancellationToken ct) =>
         Ok(await generalFleetService.CreateVehicleAsync(tenantId, request, ct));
 
+    [HttpPut("vehicles/{vehicleId:guid}")]
+    public async Task<ActionResult<VehicleDto>> UpdateVehicle(Guid vehicleId, [FromBody] UpdateVehicleRequest request, CancellationToken ct) =>
+        Ok(await generalFleetService.UpdateVehicleAsync(vehicleId, request, ct));
+
     [HttpDelete("vehicles/{vehicleId:guid}")]
     public async Task<IActionResult> DeleteVehicle(Guid vehicleId, CancellationToken ct)
     {

@@ -1,9 +1,11 @@
 import type { FleetDto, FleetModule } from '../api/types';
 
-export const ALL_FLEET_MODULES: { value: FleetModule; label: string }[] = [
+export const ALL_FLEET_MODULES: { value: FleetModule; label: string; requiresDelivery?: boolean }[] = [
   { value: 'General', label: 'General Fleet' },
   { value: 'RoboTaxi', label: 'Robo-Taxi' },
   { value: 'Delivery', label: 'Delivery' },
+  { value: 'RoutePlanning', label: 'Route planning', requiresDelivery: true },
+  { value: 'Insights', label: 'Insights', requiresDelivery: true },
 ];
 
 export function hasModule(modules: FleetModule[] | undefined, module: FleetModule): boolean {

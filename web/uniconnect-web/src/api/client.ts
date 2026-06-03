@@ -47,8 +47,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? res.statusText ?? 'Request failed');
+    const err = await res.json().catch(() => ({} as Record<string, string>));
+    const message =
+      err.detail ??
+      err.title ??
+      (typeof err.message === 'string' ? err.message : undefined) ??
+      res.statusText ??
+      'Request failed';
+    throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

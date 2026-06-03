@@ -6,10 +6,12 @@ import type { FleetDto, FleetModule } from '../../../api/types';
 import { ALL_FLEET_MODULES, formatModules } from '../../../utils/fleetModules';
 import { isDemoTenant } from '../../../utils/demoTenants';
 
-const PRODUCT_LINKS: Record<FleetModule, { label: string; to: (id: string) => string }> = {
+const PRODUCT_LINKS: Partial<Record<FleetModule, { label: string; to: (id: string) => string }>> = {
   General: { label: 'General Fleet', to: (id) => `/fleet/fleets/${id}/vehicles` },
   RoboTaxi: { label: 'Robo-Taxi', to: (id) => `/robo-taxis/fleets/${id}` },
   Delivery: { label: 'Delivery', to: (id) => `/delivery/fleets/${id}/orders` },
+  RoutePlanning: { label: 'Plan routes', to: (id) => `/delivery/fleets/${id}/plan` },
+  Insights: { label: 'Insights', to: () => '/insights' },
 };
 
 export function FleetDetailPage() {
@@ -48,9 +50,17 @@ export function FleetDetailPage() {
   }, [fleetId]);
 
   const toggleModule = (module: FleetModule) => {
-    setModules((prev) =>
-      prev.includes(module) ? prev.filter((m) => m !== module) : [...prev, module],
-    );
+    setModules((prev) => {
+      if (prev.includes(module)) {
+        let next = prev.filter((m) => m !== module);
+        if (module === 'Delivery') next = next.filter((m) => m !== 'RoutePlanning' && m !== 'Insights');
+        return next;
+      }
+      let next = [...prev, module];
+      const meta = ALL_FLEET_MODULES.find((m) => m.value === module);
+      if (meta?.requiresDelivery && !next.includes('Delivery')) next.push('Delivery');
+      return next;
+    });
   };
 
   const save = async () => {
@@ -162,11 +172,15 @@ export function FleetDetailPage() {
       </fieldset>
       <p className="muted">Enabled: {formatModules(fleet.modules)}</p>
       <ul>
-        {fleet.modules.map((m) => (
-          <li key={m}>
-            <Link to={PRODUCT_LINKS[m].to(fleet.id)}>Open {PRODUCT_LINKS[m].label}</Link>
-          </li>
-        ))}
+        {fleet.modules.map((m) => {
+          const link = PRODUCT_LINKS[m];
+          if (!link) return <li key={m}>{formatModules([m])}</li>;
+          return (
+            <li key={m}>
+              <Link to={link.to(fleet.id)}>Open {link.label}</Link>
+            </li>
+          );
+        })}
       </ul>
       {!isDemoTenant(fleet.id) && (
         <div className="form-row" style={{ marginTop: '1.5rem' }}>

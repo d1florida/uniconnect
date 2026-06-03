@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, setAuthToken } from '../api/client';
 import { normalizeUserProfile } from '../api/normalize';
-import type { FleetModule } from '../api/types';
+import type { FleetModule, TenantRole } from '../api/types';
 import { hasModule } from '../utils/fleetModules';
 
 export interface UserProfile {
@@ -11,6 +11,8 @@ export interface UserProfile {
   fleetId?: string;
   fleetName?: string;
   modules: FleetModule[];
+  tenantRole?: TenantRole;
+  isTenantAdmin: boolean;
   isPlatformAdmin: boolean;
 }
 
@@ -20,6 +22,7 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<UserProfile>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -59,9 +62,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return profile;
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const profile = normalizeUserProfile(await api.get<UserProfile>('/api/auth/me'));
+    setUser(profile);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, token, loading, login, logout }),
-    [user, token, loading, login, logout],
+    () => ({ user, token, loading, login, logout, refreshUser }),
+    [user, token, loading, login, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -22,4 +22,15 @@ public static class ProductModuleHelper
 
     public static bool HasModule(ProductModule modules, ProductModule module) =>
         module != ProductModule.None && modules.HasFlag(module);
+
+    public static ProductModule EffectiveModules(ProductModule userAccess, ProductModule tenantModules) =>
+        userAccess & tenantModules;
+
+    public static void ValidateTenantModules(ProductModule modules)
+    {
+        if (HasModule(modules, ProductModule.RoutePlanning) && !HasModule(modules, ProductModule.Delivery))
+            throw new ArgumentException("Route planning requires the Delivery module.");
+        if (HasModule(modules, ProductModule.Insights) && !HasModule(modules, ProductModule.Delivery))
+            throw new ArgumentException("Insights requires the Delivery module.");
+    }
 }

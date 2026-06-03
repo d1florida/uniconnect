@@ -9,18 +9,35 @@ public record VehicleDto(
     string Make,
     string Model,
     int Year,
+    AssetCategory Category,
+    string VehicleNumber,
     string LicensePlate,
     int CurrentMileage,
     VehicleStatus Status,
-    LocationDto? LatestLocation);
+    LocationDto? LatestLocation,
+    Guid? HomeDepotId = null,
+    string? HomeDepotName = null);
 
 public record CreateVehicleRequest(
     string Vin,
     string Make,
     string Model,
     int Year,
+    AssetCategory Category,
+    string VehicleNumber,
     string LicensePlate,
     int CurrentMileage);
+
+public record UpdateVehicleRequest(
+    string Vin,
+    string Make,
+    string Model,
+    int Year,
+    AssetCategory Category,
+    string VehicleNumber,
+    string LicensePlate,
+    int CurrentMileage,
+    VehicleStatus Status);
 
 public record MaintenanceRecordDto(
     Guid Id,
@@ -42,6 +59,8 @@ public record CreateMaintenanceRequest(
 
 public record FleetVehicleTrackingDto(
     Guid VehicleId,
+    AssetCategory Category,
+    string VehicleNumber,
     string LicensePlate,
     VehicleStatus Status,
     LocationDto? LatestLocation);

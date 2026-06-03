@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -28,11 +29,33 @@ interface FleetMapProps {
   markers: MapMarker[];
   center?: [number, number];
   zoom?: number;
+  /** When false, keeps the explicit center instead of fitting to markers. Defaults to true unless center is set. */
+  fitToMarkers?: boolean;
 }
 
-export function FleetMap({ markers, center, zoom = 12 }: FleetMapProps) {
+function FitMapToMarkers({ markers, zoom }: { markers: MapMarker[]; zoom: number }) {
+  const map = useMap();
+  const positionsKey = markers.map((m) => `${m.lat},${m.lng}`).join('|');
+
+  useEffect(() => {
+    if (markers.length === 0) return;
+
+    if (markers.length === 1) {
+      map.setView([markers[0].lat, markers[0].lng], zoom, { animate: false });
+      return;
+    }
+
+    const bounds = L.latLngBounds(markers.map((m) => [m.lat, m.lng] as L.LatLngTuple));
+    map.fitBounds(bounds, { padding: [48, 48], maxZoom: zoom });
+  }, [map, markers, positionsKey, zoom]);
+
+  return null;
+}
+
+export function FleetMap({ markers, center, zoom = 12, fitToMarkers }: FleetMapProps) {
+  const shouldFitToMarkers = fitToMarkers ?? center === undefined;
   const defaultCenter: [number, number] = center ?? (
-    markers.length > 0 ? [markers[0].lat, markers[0].lng] : [37.7749, -122.4194]
+    markers.length > 0 ? [markers[0].lat, markers[0].lng] : [39.8283, -98.5795]
   );
 
   return (
@@ -42,6 +65,7 @@ export function FleetMap({ markers, center, zoom = 12 }: FleetMapProps) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {shouldFitToMarkers && <FitMapToMarkers markers={markers} zoom={zoom} />}
         {markers.map((m) => (
           <Marker key={m.id} position={[m.lat, m.lng]}>
             <Popup>

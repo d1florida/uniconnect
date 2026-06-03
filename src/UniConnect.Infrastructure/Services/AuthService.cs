@@ -10,6 +10,7 @@ using UniConnect.Application.Interfaces;
 using UniConnect.Infrastructure.Data;
 using UniConnect.Infrastructure.Identity;
 using UniConnect.Tenant;
+using UniConnect.Tenant.Enums;
 
 namespace UniConnect.Infrastructure.Services;
 
@@ -23,10 +24,16 @@ public class AuthService(
         var user = await userManager.FindByEmailAsync(request.Email)
             ?? throw new UnauthorizedAccessException("Invalid email or password.");
 
+        if (!user.IsActive)
+            throw new UnauthorizedAccessException("This account has been disabled.");
+
         if (!await userManager.CheckPasswordAsync(user, request.Password))
             throw new UnauthorizedAccessException("Invalid email or password.");
 
         var profile = await BuildProfileAsync(user, ct);
+        if (user.TenantId.HasValue && profile.Modules.Count == 0)
+            throw new UnauthorizedAccessException("This account has no product access. Contact your tenant administrator.");
+
         var expires = DateTime.UtcNow.AddHours(configuration.GetValue("Jwt:ExpireHours", 24));
         var token = GenerateToken(user, profile, expires);
         return new LoginResponse(token, expires, profile);
@@ -42,17 +49,31 @@ public class AuthService(
     private async Task<UserProfileDto> BuildProfileAsync(ApplicationUser user, CancellationToken ct)
     {
         string? tenantName = null;
-        IReadOnlyList<UniConnect.Tenant.Enums.ProductModule> modules = [];
+        IReadOnlyList<ProductModule> modules = [];
+        var isPlatformAdmin = await userManager.IsInRoleAsync(user, "PlatformAdmin");
+
         if (user.TenantId.HasValue)
         {
             var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == user.TenantId, ct);
             tenantName = tenant?.Name;
             if (tenant is not null)
-                modules = ProductModuleHelper.Expand(tenant.Modules);
+            {
+                var effective = ProductModuleHelper.EffectiveModules(user.ModuleAccess, tenant.Modules);
+                modules = ProductModuleHelper.Expand(effective);
+            }
         }
 
-        var isAdmin = await userManager.IsInRoleAsync(user, "PlatformAdmin");
-        return new UserProfileDto(user.Id, user.Email!, user.DisplayName, user.TenantId, tenantName, modules, isAdmin);
+        var isTenantAdmin = user.TenantId.HasValue && user.TenantRole == TenantRole.Admin;
+        return new UserProfileDto(
+            user.Id,
+            user.Email!,
+            user.DisplayName,
+            user.TenantId,
+            tenantName,
+            modules,
+            isPlatformAdmin,
+            user.TenantId.HasValue ? user.TenantRole : null,
+            isTenantAdmin);
     }
 
     private string GenerateToken(ApplicationUser user, UserProfileDto profile, DateTime expires)
@@ -67,8 +88,9 @@ public class AuthService(
         if (user.TenantId.HasValue)
         {
             claims.Add(new Claim("tenant_id", user.TenantId.Value.ToString()));
+            claims.Add(new Claim("tenant_role", user.TenantRole.ToString()));
             var moduleFlags = ProductModuleHelper.Combine(profile.Modules);
-            if (moduleFlags != UniConnect.Tenant.Enums.ProductModule.None)
+            if (moduleFlags != ProductModule.None)
                 claims.Add(new Claim("product_modules", ((int)moduleFlags).ToString()));
         }
 

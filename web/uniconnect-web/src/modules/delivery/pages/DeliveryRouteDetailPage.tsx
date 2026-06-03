@@ -8,22 +8,31 @@ import type {
   DeliveryRouteStopDto,
   DeliveryStopStatus,
   DeliveryVehicleDto,
+  DriverDto,
+  OptimizeSequenceResultDto,
 } from '../../../api/types';
 import { FleetMap } from '../../../components/FleetMap';
+import { useAuth } from '../../../auth/AuthContext';
+import { hasModule } from '../../../utils/fleetModules';
 import { ErrorAlert } from '../../../components/ErrorAlert';
 import { Loading } from '../../../components/Loading';
-
-const BASE_LAT = 37.7749;
-const BASE_LNG = -122.4194;
+import { routeStatusLabel, formatDriveMinutes, formatNextStopEta, isOperationalRouteStop } from '../deliveryLabels';
+import { vehicleSelectLabel } from '../../../utils/vehicleLabels';
+import { buildRouteStopMarkers } from '../deliveryMapMarkers';
 
 export function DeliveryRouteDetailPage() {
   const { routeId } = useParams<{ routeId: string }>();
+  const { user } = useAuth();
   const [route, setRoute] = useState<DeliveryRouteDetailDto | null>(null);
   const [vehicles, setVehicles] = useState<DeliveryVehicleDto[]>([]);
+  const [drivers, setDrivers] = useState<DriverDto[]>([]);
   const [vehicleId, setVehicleId] = useState('');
+  const [driverId, setDriverId] = useState('');
   const [mode, setMode] = useState<AutomationMode>('Conventional');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [optimizeMessage, setOptimizeMessage] = useState('');
+  const [optimizing, setOptimizing] = useState(false);
   const [newStop, setNewStop] = useState({ address: '', recipientName: '', parcelDescription: '' });
 
   const load = async () => {
@@ -31,9 +40,16 @@ export function DeliveryRouteDetailPage() {
     const r = await api.get<DeliveryRouteDetailDto>(`/api/delivery/routes/${routeId}`);
     setRoute(r);
     if (r.tenantId) {
-      const v = await api.get<DeliveryVehicleDto[]>(`/api/delivery/tenants/${r.tenantId}/vehicles`);
+      const [v, d] = await Promise.all([
+        api.get<DeliveryVehicleDto[]>(`/api/delivery/tenants/${r.tenantId}/vehicles`),
+        api.get<DriverDto[]>(`/api/delivery/tenants/${r.tenantId}/drivers`),
+      ]);
       setVehicles(v);
+      setDrivers(d.filter((x) => x.isActive));
     }
+    if (r.vehicleId) setVehicleId(r.vehicleId);
+    if (r.driverId) setDriverId(r.driverId);
+    if (r.automationMode) setMode(r.automationMode);
   };
 
   useEffect(() => {
@@ -43,13 +59,27 @@ export function DeliveryRouteDetailPage() {
   }, [routeId]);
 
   const setStatus = async (status: DeliveryRouteStatus) => {
-    await api.patch(`/api/delivery/routes/${routeId}/status`, { status });
-    await load();
+    setError('');
+    try {
+      await api.patch(`/api/delivery/routes/${routeId}/status`, { status });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update route status');
+    }
   };
 
   const assign = async () => {
-    await api.post(`/api/delivery/routes/${routeId}/assign`, { vehicleId, automationMode: mode });
-    await load();
+    setError('');
+    try {
+      await api.post(`/api/delivery/routes/${routeId}/assign`, {
+        vehicleId,
+        automationMode: mode,
+        driverId: mode === 'Conventional' && driverId ? driverId : null,
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to assign');
+    }
   };
 
   const completeStop = async (stopId: string, status: DeliveryStopStatus) => {
@@ -59,65 +89,103 @@ export function DeliveryRouteDetailPage() {
 
   const addStop = async () => {
     if (!newStop.address.trim()) return;
-    await api.post(`/api/delivery/routes/${routeId}/stops`, {
-      stopType: 'Dropoff',
-      address: newStop.address.trim(),
-      recipientName: newStop.recipientName.trim() || null,
-      recipientPhone: null,
-      parcelDescription: newStop.parcelDescription.trim() || null,
-      notes: null,
-    });
-    setNewStop({ address: '', recipientName: '', parcelDescription: '' });
-    await load();
+    setError('');
+    try {
+      await api.post(`/api/delivery/routes/${routeId}/stops`, {
+        stopType: 'Dropoff',
+        address: newStop.address.trim(),
+        recipientName: newStop.recipientName.trim() || null,
+        recipientPhone: null,
+        parcelDescription: newStop.parcelDescription.trim() || null,
+        notes: null,
+      });
+      setNewStop({ address: '', recipientName: '', parcelDescription: '' });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add stop');
+    }
   };
 
   const moveStop = async (stop: DeliveryRouteStopDto, direction: -1 | 1) => {
-    if (!route) return;
-    const delivery = route.stops.filter((s) => s.stopType !== 'Depot');
+    if (!route || !routeId) return;
+    const delivery = route.stops
+      .filter((s) => isOperationalRouteStop(s, route.depotAddress))
+      .sort((a, b) => a.sequence - b.sequence);
     const idx = delivery.findIndex((s) => s.id === stop.id);
     const target = idx + direction;
-    if (target < 0 || target >= delivery.length) return;
+    if (idx < 0 || target < 0 || target >= delivery.length) return;
     const reordered = [...delivery];
     [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
-    await api.put(`/api/delivery/routes/${routeId}/stops/reorder`, {
-      stopIds: reordered.map((s) => s.id),
-    });
-    await load();
+    setError('');
+    try {
+      await api.put(`/api/delivery/routes/${routeId}/stops/reorder`, {
+        stopIds: reordered.map((s) => s.id),
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to reorder stops');
+    }
   };
 
   const deleteStop = async (stopId: string) => {
-    await api.delete(`/api/delivery/routes/${routeId}/stops/${stopId}`);
-    await load();
+    setError('');
+    try {
+      await api.delete(`/api/delivery/routes/${routeId}/stops/${stopId}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete stop');
+    }
+  };
+
+  const optimizeSequence = async () => {
+    if (!route || !routeId) return;
+    const delivery = route.stops
+      .filter((s) => isOperationalRouteStop(s, route.depotAddress))
+      .sort((a, b) => a.sequence - b.sequence);
+    if (delivery.length < 2) return;
+
+    setOptimizing(true);
+    setError('');
+    setOptimizeMessage('');
+    try {
+      const result = await api.post<OptimizeSequenceResultDto>(
+        `/api/route-planning/routes/${routeId}/optimize-sequence`,
+        { stopIds: delivery.map((s) => s.id) },
+      );
+      setOptimizeMessage(
+        result.estimatedMinutesBefore === result.estimatedMinutesAfter
+          ? `Stop order updated — est. drive time ${formatDriveMinutes(result.estimatedMinutesAfter) ?? 'unavailable'} (already optimal)`
+          : `Stop order optimized — est. drive time ${formatDriveMinutes(result.estimatedMinutesBefore) ?? '?'} → ${formatDriveMinutes(result.estimatedMinutesAfter) ?? '?'}`,
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to optimize stop order');
+    } finally {
+      setOptimizing(false);
+    }
   };
 
   if (loading) return <Loading />;
-  if (!route) return <ErrorAlert message="Route not found" />;
+  if (!route) return <ErrorAlert message={error || 'Route not found'} />;
 
   const editable = route.status === 'Draft' || route.status === 'Planned';
-  const deliveryStops = route.stops.filter((s) => s.stopType !== 'Depot');
+  const deliveryStops = route.stops.filter((s) => isOperationalRouteStop(s, route.depotAddress));
+  const canOptimize = hasModule(user?.modules, 'RoutePlanning') && editable && deliveryStops.length >= 2;
   const nextStop = deliveryStops.find((s) => s.status === 'Pending');
   const conventional = vehicles.filter((v) => !v.isAutonomous);
   const autonomous = vehicles.filter((v) => v.isAutonomous);
+  const activeDrivers = drivers.filter((d) => d.isActive);
+  const canStart =
+    !!route.vehicleId &&
+    (route.automationMode === 'Autonomous' || !!route.driverId);
 
-  const mapMarkers = route.stops
-    .filter((s) => s.stopType !== 'Depot')
-    .map((s, i) => ({
-      id: s.id,
-      label: `#${s.sequence} ${s.recipientName ?? s.address.slice(0, 24)}`,
-      lat: BASE_LAT + i * 0.008,
-      lng: BASE_LNG + i * 0.006,
-      detail: `${s.stopType} · ${s.status}`,
-    }));
+  const mapMarkers = buildRouteStopMarkers(route.stops);
 
-  if (route.stops.some((s) => s.stopType === 'Depot')) {
-    mapMarkers.unshift({
-      id: 'depot',
-      label: 'Depot',
-      lat: BASE_LAT,
-      lng: BASE_LNG,
-      detail: route.depotAddress,
-    });
-  }
+  const driveTimeLabel = formatDriveMinutes(route.estimatedDriveMinutes);
+  const nextStopEtaLabel = formatNextStopEta(
+    route.estimatedMinutesToNextStop,
+    route.estimatedNextStopArrivalAt,
+  );
 
   return (
     <div>
@@ -125,21 +193,45 @@ export function DeliveryRouteDetailPage() {
         <h2>{route.name}</h2>
         <p>
           {route.depotAddress} · {route.scheduledDate}
+          {driveTimeLabel && <> · Est. drive {driveTimeLabel}</>}
           {' · '}
-          <span className="badge badge-conv">{route.status}</span>
-          {route.licensePlate && <> · {route.licensePlate}</>}
+          <span className="badge badge-conv">{routeStatusLabel(route.status)}</span>
+          {route.routePlanRunId && (
+            <>
+              {' · '}
+              <span className="badge badge-av" title={`Plan run ${route.routePlanRunId}`}>
+                From route plan · {route.scheduledDate}
+              </span>
+            </>
+          )}
+          {route.vehicleNumber && <> · Vehicle {route.vehicleNumber}</>}
+          {route.licensePlate && route.licensePlate !== route.vehicleNumber && <> · {route.licensePlate}</>}
+          {route.driverName && <> · {route.driverName}</>}
           {' · '}
           <Link to={`/delivery/fleets/${route.tenantId}/routes`}>Back to routes</Link>
         </p>
       </div>
       <ErrorAlert message={error} />
+      {optimizeMessage && <p className="plan-hint">{optimizeMessage}</p>}
+      {!driveTimeLabel && deliveryStops.length > 0 && (
+        <p className="muted">
+          Drive time unavailable — ensure the depot and stops have geocoded addresses.
+        </p>
+      )}
 
       <div className="form-row">
+        {canOptimize && (
+          <button type="button" className="secondary" onClick={() => void optimizeSequence()} disabled={optimizing}>
+            {optimizing ? 'Optimizing…' : 'Optimize stop order'}
+          </button>
+        )}
         {route.status === 'Draft' && (
           <button type="button" onClick={() => setStatus('Planned')}>Mark planned</button>
         )}
         {route.status === 'Planned' && (
-          <button type="button" onClick={() => setStatus('InProgress')}>Start route</button>
+          <button type="button" onClick={() => setStatus('InProgress')} disabled={!canStart}>
+            Start route
+          </button>
         )}
         {route.status === 'InProgress' && deliveryStops.every((s) => s.status !== 'Pending') && (
           <button type="button" onClick={() => setStatus('Completed')}>Complete route</button>
@@ -150,10 +242,15 @@ export function DeliveryRouteDetailPage() {
           </button>
         )}
       </div>
+      {route.status === 'Planned' && !canStart && (
+        <p className="muted">
+          Assign a vehicle{route.automationMode !== 'Autonomous' && ' and driver'} before starting this route.
+        </p>
+      )}
 
       {editable && (
         <>
-          <h3>Assign vehicle</h3>
+          <h3>Assign vehicle & driver</h3>
           <div className="form-row">
             <select value={mode} onChange={(e) => setMode(e.target.value as AutomationMode)}>
               <option value="Conventional">Conventional</option>
@@ -163,20 +260,36 @@ export function DeliveryRouteDetailPage() {
               <option value="">Select vehicle</option>
               {(mode === 'Conventional' ? conventional : autonomous).map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.licensePlate} — {v.make} {v.model}
+                  {vehicleSelectLabel(v)}
                 </option>
               ))}
             </select>
-            <button type="button" onClick={assign} disabled={!vehicleId}>
+            {mode === 'Conventional' && (
+              <select value={driverId} onChange={(e) => setDriverId(e.target.value)}>
+                <option value="">No driver</option>
+                {activeDrivers.map((d) => (
+                  <option key={d.id} value={d.id}>{d.displayName}</option>
+                ))}
+              </select>
+            )}
+            <button type="button" onClick={() => void assign()} disabled={!vehicleId}>
               Assign
             </button>
           </div>
+          {mode === 'Conventional' && activeDrivers.length === 0 && (
+            <p className="muted">
+              No active drivers. <Link to={`/delivery/fleets/${route.tenantId}/drivers`}>Add drivers</Link>
+            </p>
+          )}
         </>
       )}
 
       {route.status === 'InProgress' && nextStop && (
         <div className="next-stop-banner">
           <strong>Next stop:</strong> #{nextStop.sequence} {nextStop.address}
+          {nextStopEtaLabel && (
+            <span className="muted"> · {nextStopEtaLabel}</span>
+          )}
           <div className="form-row">
             <button type="button" onClick={() => completeStop(nextStop.id, 'Completed')}>
               Complete stop
@@ -188,9 +301,13 @@ export function DeliveryRouteDetailPage() {
         </div>
       )}
 
-      <FleetMap markers={mapMarkers} center={[BASE_LAT, BASE_LNG]} zoom={12} />
+      {mapMarkers.length > 0 ? (
+        <FleetMap markers={mapMarkers} />
+      ) : (
+        <p className="muted">Map unavailable — stop coordinates could not be resolved.</p>
+      )}
 
-      <h3>Stops ({route.stops.length})</h3>
+      <h3>Stops ({deliveryStops.length})</h3>
       <table className="stops-table">
         <thead>
           <tr>
@@ -204,7 +321,10 @@ export function DeliveryRouteDetailPage() {
           </tr>
         </thead>
         <tbody>
-          {route.stops.map((s) => (
+          {[...route.stops]
+            .filter((s) => isOperationalRouteStop(s, route.depotAddress))
+            .sort((a, b) => a.sequence - b.sequence)
+            .map((s) => (
             <tr key={s.id} className={s.id === nextStop?.id ? 'stop-current' : ''}>
               <td>{s.sequence}</td>
               <td>{s.stopType}</td>

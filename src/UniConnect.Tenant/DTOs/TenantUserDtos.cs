@@ -1,0 +1,24 @@
+using UniConnect.Tenant.Enums;
+
+namespace UniConnect.Tenant.DTOs;
+
+public record TenantUserDto(
+    Guid Id,
+    string Email,
+    string DisplayName,
+    TenantRole Role,
+    IReadOnlyList<ProductModule> ModuleAccess,
+    bool IsActive);
+
+public record CreateTenantUserRequest(
+    string Email,
+    string DisplayName,
+    TenantRole Role,
+    IReadOnlyList<ProductModule> ModuleAccess,
+    string Password);
+
+public record UpdateTenantUserRequest(
+    string? DisplayName,
+    TenantRole? Role,
+    IReadOnlyList<ProductModule>? ModuleAccess,
+    bool? IsActive);

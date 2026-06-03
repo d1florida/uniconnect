@@ -6,6 +6,8 @@
     <ProjectReference Include="..\UniConnect.GeneralFleet\UniConnect.GeneralFleet.csproj" />
     <ProjectReference Include="..\UniConnect.RoboTaxi\UniConnect.RoboTaxi.csproj" />
     <ProjectReference Include="..\UniConnect.Delivery\UniConnect.Delivery.csproj" />
+    <ProjectReference Include="..\UniConnect.Insights\UniConnect.Insights.csproj" />
+    <ProjectReference Include="..\UniConnect.RoutePlanning\UniConnect.RoutePlanning.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -15,6 +17,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
   </ItemGroup>
 

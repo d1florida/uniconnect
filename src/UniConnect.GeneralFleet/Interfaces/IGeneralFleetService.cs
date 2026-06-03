@@ -7,6 +7,7 @@ public interface IGeneralFleetService
     Task<IReadOnlyList<VehicleDto>> GetVehiclesAsync(Guid tenantId, CancellationToken ct = default);
     Task<VehicleDto?> GetVehicleAsync(Guid vehicleId, CancellationToken ct = default);
     Task<VehicleDto> CreateVehicleAsync(Guid tenantId, CreateVehicleRequest request, CancellationToken ct = default);
+    Task<VehicleDto> UpdateVehicleAsync(Guid vehicleId, UpdateVehicleRequest request, CancellationToken ct = default);
     Task DeleteVehicleAsync(Guid vehicleId, CancellationToken ct = default);
     Task<IReadOnlyList<MaintenanceRecordDto>> GetMaintenanceAsync(Guid vehicleId, CancellationToken ct = default);
     Task<MaintenanceRecordDto> CreateMaintenanceAsync(Guid vehicleId, CreateMaintenanceRequest request, CancellationToken ct = default);
