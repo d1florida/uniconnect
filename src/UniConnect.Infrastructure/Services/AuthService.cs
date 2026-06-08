@@ -9,6 +9,8 @@ using UniConnect.Application.DTOs;
 using UniConnect.Application.Interfaces;
 using UniConnect.Infrastructure.Data;
 using UniConnect.Infrastructure.Identity;
+using UniConnect.Tenant;
+using UniConnect.Tenant.Enums;
 
 namespace UniConnect.Infrastructure.Services;
 
@@ -22,10 +24,16 @@ public class AuthService(
         var user = await userManager.FindByEmailAsync(request.Email)
             ?? throw new UnauthorizedAccessException("Invalid email or password.");
 
+        if (!user.IsActive)
+            throw new UnauthorizedAccessException("This account has been disabled.");
+
         if (!await userManager.CheckPasswordAsync(user, request.Password))
             throw new UnauthorizedAccessException("Invalid email or password.");
 
         var profile = await BuildProfileAsync(user, ct);
+        if (user.TenantId.HasValue && profile.Modules.Count == 0)
+            throw new UnauthorizedAccessException("This account has no product access. Contact your tenant administrator.");
+
         var expires = DateTime.UtcNow.AddHours(configuration.GetValue("Jwt:ExpireHours", 24));
         var token = GenerateToken(user, profile, expires);
         return new LoginResponse(token, expires, profile);
@@ -40,17 +48,44 @@ public class AuthService(
 
     private async Task<UserProfileDto> BuildProfileAsync(ApplicationUser user, CancellationToken ct)
     {
-        string? fleetName = null;
-        Domain.Enums.FleetType? fleetType = null;
-        if (user.FleetId.HasValue)
+        string? tenantName = null;
+        IReadOnlyList<ProductModule> modules = [];
+        var isPlatformAdmin = await userManager.IsInRoleAsync(user, "PlatformAdmin");
+
+        if (user.TenantId.HasValue)
         {
-            var fleet = await db.Fleets.AsNoTracking().FirstOrDefaultAsync(f => f.Id == user.FleetId, ct);
-            fleetName = fleet?.Name;
-            fleetType = fleet?.FleetType;
+            var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == user.TenantId, ct);
+            tenantName = tenant?.Name;
+            if (tenant is not null)
+            {
+                var effective = ProductModuleHelper.EffectiveModules(user.ModuleAccess, tenant.Modules);
+                modules = ProductModuleHelper.Expand(effective);
+            }
         }
 
-        var isAdmin = await userManager.IsInRoleAsync(user, "PlatformAdmin");
-        return new UserProfileDto(user.Id, user.Email!, user.DisplayName, user.FleetId, fleetName, fleetType, isAdmin);
+        var isTenantAdmin = user.TenantId.HasValue && user.TenantRole == TenantRole.Admin;
+        Guid? driverId = null;
+        if (user.TenantId.HasValue)
+        {
+            driverId = await db.Drivers.AsNoTracking()
+                .Where(d => d.TenantId == user.TenantId && d.UserId == user.Id && d.IsActive)
+                .Select(d => (Guid?)d.Id)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        var isDriver = user.TenantRole == TenantRole.Driver;
+        return new UserProfileDto(
+            user.Id,
+            user.Email!,
+            user.DisplayName,
+            user.TenantId,
+            tenantName,
+            modules,
+            isPlatformAdmin,
+            user.TenantId.HasValue ? user.TenantRole : null,
+            isTenantAdmin,
+            driverId,
+            isDriver);
     }
 
     private string GenerateToken(ApplicationUser user, UserProfileDto profile, DateTime expires)
@@ -62,15 +97,20 @@ public class AuthService(
             new(JwtRegisteredClaimNames.Name, user.DisplayName),
         };
 
-        if (user.FleetId.HasValue)
+        if (user.TenantId.HasValue)
         {
-            claims.Add(new Claim("fleet_id", user.FleetId.Value.ToString()));
-            if (profile.FleetType.HasValue)
-                claims.Add(new Claim("fleet_type", profile.FleetType.Value.ToString()));
+            claims.Add(new Claim("tenant_id", user.TenantId.Value.ToString()));
+            claims.Add(new Claim("tenant_role", user.TenantRole.ToString()));
+            var moduleFlags = ProductModuleHelper.Combine(profile.Modules);
+            if (moduleFlags != ProductModule.None)
+                claims.Add(new Claim("product_modules", ((int)moduleFlags).ToString()));
         }
 
         if (profile.IsPlatformAdmin)
             claims.Add(new Claim("role", "PlatformAdmin"));
+
+        if (profile.DriverId.HasValue)
+            claims.Add(new Claim("driver_id", profile.DriverId.Value.ToString()));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

@@ -152,35 +152,6 @@ namespace UniConnect.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("UniConnect.Delivery.Entities.BusinessAccount", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AccountCode")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("CompanyName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ContactEmail")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("FleetId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FleetId", "AccountCode")
-                        .IsUnique();
-
-                    b.ToTable("BusinessAccounts");
-                });
-
             modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryAssignment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -199,6 +170,9 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<Guid>("DeliveryOrderId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DriverId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
@@ -206,6 +180,8 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.HasIndex("DeliveryOrderId")
                         .IsUnique();
+
+                    b.HasIndex("DriverId");
 
                     b.ToTable("DeliveryAssignments");
                 });
@@ -216,21 +192,42 @@ namespace UniConnect.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("BusinessAccountId")
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CustomerId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Channel")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime?>("DeliveredAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DeliveryAddress")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("FleetId")
+                    b.Property<string>("DeliveryFormattedAddress")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("DeliveryLatitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("DeliveryLongitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ExternalRef")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("FailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("FixedRouteTemplateId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("HeldUntil")
+                        .HasColumnType("date");
 
                     b.Property<string>("ParcelDescription")
                         .IsRequired()
@@ -239,6 +236,15 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<string>("PickupAddress")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("PickupFormattedAddress")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("PickupLatitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("PickupLongitude")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("RecipientName")
                         .IsRequired()
@@ -257,11 +263,16 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("BusinessAccountId");
+                    b.HasIndex("CustomerId");
 
-                    b.HasIndex("FleetId");
+                    b.HasIndex("FixedRouteTemplateId");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("DeliveryOrders");
                 });
@@ -285,12 +296,21 @@ namespace UniConnect.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("FleetId")
+                    b.Property<Guid?>("DepotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FixedRouteTemplateId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("RoutePlanRunId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateOnly>("ScheduledDate")
                         .HasColumnType("date");
@@ -301,12 +321,21 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("VehicleId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FleetId", "ScheduledDate");
+                    b.HasIndex("DepotId");
+
+                    b.HasIndex("DriverId");
+
+                    b.HasIndex("FixedRouteTemplateId");
+
+                    b.HasIndex("TenantId", "ScheduledDate");
 
                     b.ToTable("DeliveryRoutes");
                 });
@@ -323,6 +352,9 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeliveryOrderId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
@@ -350,13 +382,15 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DeliveryOrderId");
+
                     b.HasIndex("RouteId", "Sequence")
                         .IsUnique();
 
                     b.ToTable("DeliveryRouteStops");
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.Fleet", b =>
+            modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryZone", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -365,26 +399,116 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("FleetType")
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MatchType")
                         .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Slug")
-                        .IsUnique();
+                    b.HasIndex("TenantId", "Name");
 
-                    b.ToTable("Fleets");
+                    b.ToTable("DeliveryZones", (string)null);
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.MaintenanceRecord", b =>
+            modelBuilder.Entity("UniConnect.Delivery.Entities.Depot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Hours")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("Depots", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Delivery.Entities.FixedRouteTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DefaultDriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DefaultVehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DeliveryZoneId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DepotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int[]>("RouteDays")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryZoneId");
+
+                    b.HasIndex("TenantId", "DeliveryZoneId");
+
+                    b.ToTable("FixedRouteTemplates", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.MaintenanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -416,19 +540,22 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("MaintenanceRecords");
+                    b.ToTable("MaintenanceRecords", (string)null);
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.Vehicle", b =>
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.Vehicle", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Category")
+                        .HasColumnType("integer");
+
                     b.Property<int>("CurrentMileage")
                         .HasColumnType("integer");
 
-                    b.Property<Guid>("FleetId")
+                    b.Property<Guid?>("HomeDepotId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("LicensePlate")
@@ -446,6 +573,13 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("VehicleNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Vin")
                         .IsRequired()
                         .HasColumnType("text");
@@ -455,15 +589,18 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FleetId");
+                    b.HasIndex("HomeDepotId");
 
                     b.HasIndex("Vin")
                         .IsUnique();
 
-                    b.ToTable("Vehicles");
+                    b.HasIndex("TenantId", "VehicleNumber")
+                        .IsUnique();
+
+                    b.ToTable("Vehicles", (string)null);
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.VehicleLocation", b =>
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.VehicleLocation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -494,7 +631,7 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId", "RecordedAt");
 
-                    b.ToTable("VehicleLocations");
+                    b.ToTable("VehicleLocations", (string)null);
                 });
 
             modelBuilder.Entity("UniConnect.Infrastructure.Identity.ApplicationUser", b =>
@@ -521,14 +658,17 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid?>("FleetId")
-                        .HasColumnType("uuid");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ModuleAccess")
+                        .HasColumnType("integer");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
@@ -550,6 +690,12 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TenantRole")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("boolean");
 
@@ -559,8 +705,6 @@ namespace UniConnect.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FleetId");
-
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
 
@@ -568,7 +712,364 @@ namespace UniConnect.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
+                    b.HasIndex("TenantId");
+
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.Customer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveryAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeliveryFormattedAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeliveryHours")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("DeliveryLatitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("DeliveryLongitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<TimeOnly?>("DeliveryWindowEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("DeliveryWindowStart")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid?>("DeliveryZoneId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalRef")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<TimeOnly?>("NoDeliveryEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("NoDeliveryStart")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryZoneId");
+
+                    b.HasIndex("TenantId", "Name", "Phone");
+
+                    b.ToTable("Customers", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.Driver", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BreakMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LunchMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxRouteMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<TimeOnly?>("ReturnByTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("ShiftEndTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("ShiftStartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique()
+                        .HasFilter("\"UserId\" IS NOT NULL");
+
+                    b.ToTable("Drivers", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.DriverScheduleException", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BreakMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsWorking")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LunchMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxRouteMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<TimeOnly?>("OffBlockEndTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("OffBlockStartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("ReturnByTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("ShiftEndTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("ShiftStartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("DriverScheduleExceptions", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.DriverScheduleRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("FromDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<int>("RequestType")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ToDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId", "FromDate", "ToDate");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt");
+
+                    b.ToTable("DriverScheduleRequests", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.DriverWorkPattern", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BreakMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsWorkingDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LunchMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxRouteMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<TimeOnly?>("ReturnByTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("ShiftEndTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("ShiftStartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId", "DayOfWeek")
+                        .IsUnique();
+
+                    b.ToTable("DriverWorkPatterns", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.OperationalEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContextJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerLabel")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Domain")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DriverLabel")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MetricsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Narrative")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PlanRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PlannerLabel")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("RouteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SchemaVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("StopId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("VehicleLabel")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("DriverId");
+
+                    b.HasIndex("PlanRunId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.HasIndex("TenantId", "OccurredAt");
+
+                    b.HasIndex("TenantId", "Domain", "OccurredAt");
+
+                    b.ToTable("OperationalEvents", (string)null);
                 });
 
             modelBuilder.Entity("UniConnect.RoboTaxi.Entities.RoboTaxiProfile", b =>
@@ -602,6 +1103,273 @@ namespace UniConnect.Infrastructure.Migrations
                     b.HasKey("VehicleId");
 
                     b.ToTable("RoboTaxiProfiles");
+                });
+
+            modelBuilder.Entity("UniConnect.RoutePlanning.Entities.GeocodedAddress", b =>
+                {
+                    b.Property<string>("NormalizedAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FormattedAddress")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("GeocodedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Latitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Longitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("NormalizedAddress");
+
+                    b.ToTable("GeocodedAddresses", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.RoutePlanning.Entities.RoutePlanRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("ComputeDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DepotAddress")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("DepotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DiscardReason")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("FixedRouteTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("OrdersPlanned")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OrdersRequested")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OrdersUnassigned")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProposalCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProposalJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("ScheduledDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepotId");
+
+                    b.HasIndex("FixedRouteTemplateId");
+
+                    b.HasIndex("RequestedByUserId");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.ToTable("RoutePlanRuns", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.Tenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactEmail")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactPhone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Modules")
+                        .HasColumnType("integer")
+                        .HasColumnName("Modules");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Tenants", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantApiKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("KeyPrefix")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyPrefix")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("TenantApiKeys", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantDeliverySettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowMultipleRoutesPerDriverPerDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantDeliverySettings", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantGeocodingSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowPostalFallback")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("GoogleApiKeyHint")
+                        .HasColumnType("text");
+
+                    b.Property<string>("GoogleApiKeyProtected")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NominatimBaseUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NominatimUserAgent")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantGeocodingSettings", (string)null);
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantPlanningRules", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CompileWarningsJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CompiledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CompiledPolicyJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Markdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantPlanningRules", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
@@ -655,17 +1423,6 @@ namespace UniConnect.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("UniConnect.Delivery.Entities.BusinessAccount", b =>
-                {
-                    b.HasOne("UniConnect.Domain.Entities.Fleet", "Fleet")
-                        .WithMany()
-                        .HasForeignKey("FleetId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Fleet");
-                });
-
             modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryAssignment", b =>
                 {
                     b.HasOne("UniConnect.Delivery.Entities.DeliveryOrder", "DeliveryOrder")
@@ -679,31 +1436,29 @@ namespace UniConnect.Infrastructure.Migrations
 
             modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryOrder", b =>
                 {
-                    b.HasOne("UniConnect.Delivery.Entities.BusinessAccount", "BusinessAccount")
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
                         .WithMany()
-                        .HasForeignKey("BusinessAccountId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("UniConnect.Domain.Entities.Fleet", "Fleet")
-                        .WithMany()
-                        .HasForeignKey("FleetId")
+                        .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("BusinessAccount");
-
-                    b.Navigation("Fleet");
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryRoute", b =>
                 {
-                    b.HasOne("UniConnect.Domain.Entities.Fleet", "Fleet")
+                    b.HasOne("UniConnect.Delivery.Entities.Depot", null)
                         .WithMany()
-                        .HasForeignKey("FleetId")
+                        .HasForeignKey("DepotId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Fleet");
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryRouteStop", b =>
@@ -717,9 +1472,50 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Navigation("Route");
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.MaintenanceRecord", b =>
+            modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryZone", b =>
                 {
-                    b.HasOne("UniConnect.Domain.Entities.Vehicle", "Vehicle")
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("UniConnect.Delivery.Entities.Depot", b =>
+                {
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("UniConnect.Delivery.Entities.FixedRouteTemplate", b =>
+                {
+                    b.HasOne("UniConnect.Delivery.Entities.DeliveryZone", "DeliveryZone")
+                        .WithMany()
+                        .HasForeignKey("DeliveryZoneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DeliveryZone");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.MaintenanceRecord", b =>
+                {
+                    b.HasOne("UniConnect.GeneralFleet.Entities.Vehicle", "Vehicle")
                         .WithMany("MaintenanceRecords")
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -728,26 +1524,108 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.Vehicle", b =>
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.Vehicle", b =>
                 {
-                    b.HasOne("UniConnect.Domain.Entities.Fleet", "Fleet")
-                        .WithMany("Vehicles")
-                        .HasForeignKey("FleetId")
+                    b.HasOne("UniConnect.Delivery.Entities.Depot", null)
+                        .WithMany()
+                        .HasForeignKey("HomeDepotId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Fleet");
+                    b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.VehicleLocation", b =>
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.VehicleLocation", b =>
                 {
-                    b.HasOne("UniConnect.Domain.Entities.Vehicle", "Vehicle")
+                    b.HasOne("UniConnect.GeneralFleet.Entities.Vehicle", "Vehicle")
                         .WithMany("Locations")
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.DriverScheduleException", b =>
+                {
+                    b.HasOne("UniConnect.Insights.Entities.Driver", "Driver")
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Driver");
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.DriverScheduleRequest", b =>
+                {
+                    b.HasOne("UniConnect.Insights.Entities.Driver", "Driver")
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Driver");
+                });
+
+            modelBuilder.Entity("UniConnect.Insights.Entities.DriverWorkPattern", b =>
+                {
+                    b.HasOne("UniConnect.Insights.Entities.Driver", "Driver")
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Driver");
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantApiKey", b =>
+                {
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantDeliverySettings", b =>
+                {
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithOne()
+                        .HasForeignKey("UniConnect.Tenant.Entities.TenantDeliverySettings", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantGeocodingSettings", b =>
+                {
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithOne()
+                        .HasForeignKey("UniConnect.Tenant.Entities.TenantGeocodingSettings", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("UniConnect.Tenant.Entities.TenantPlanningRules", b =>
+                {
+                    b.HasOne("UniConnect.Tenant.Entities.Tenant", "Tenant")
+                        .WithOne()
+                        .HasForeignKey("UniConnect.Tenant.Entities.TenantPlanningRules", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("UniConnect.Delivery.Entities.DeliveryOrder", b =>
@@ -760,12 +1638,7 @@ namespace UniConnect.Infrastructure.Migrations
                     b.Navigation("Stops");
                 });
 
-            modelBuilder.Entity("UniConnect.Domain.Entities.Fleet", b =>
-                {
-                    b.Navigation("Vehicles");
-                });
-
-            modelBuilder.Entity("UniConnect.Domain.Entities.Vehicle", b =>
+            modelBuilder.Entity("UniConnect.GeneralFleet.Entities.Vehicle", b =>
                 {
                     b.Navigation("Locations");
 

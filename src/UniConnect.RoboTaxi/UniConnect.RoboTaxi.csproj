@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\UniConnect.Domain\UniConnect.Domain.csproj" />
-    <ProjectReference Include="..\UniConnect.Application\UniConnect.Application.csproj" />
+    <ProjectReference Include="..\UniConnect.GeneralFleet\UniConnect.GeneralFleet.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

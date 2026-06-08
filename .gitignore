@@ -19,6 +19,9 @@ dist/
 .env
 .env.local
 
+# ASP.NET Data Protection (tenant API key encryption)
+**/App_Data/data-protection-keys/
+
 # IDE
 .idea/
 *.swp

@@ -1,25 +1,35 @@
 using UniConnect.Delivery.Enums;
-using UniConnect.Domain.Entities;
+using TenantEntity = UniConnect.Tenant.Entities.Tenant;
 
 namespace UniConnect.Delivery.Entities;
 
 public class DeliveryOrder
 {
     public Guid Id { get; set; }
-    public Guid FleetId { get; set; }
-    public DeliveryChannel Channel { get; set; }
+    public Guid TenantId { get; set; }
     public DeliveryOrderStatus Status { get; set; }
     public string PickupAddress { get; set; } = string.Empty;
     public string DeliveryAddress { get; set; } = string.Empty;
     public string RecipientName { get; set; } = string.Empty;
     public string RecipientPhone { get; set; } = string.Empty;
-    public Guid? BusinessAccountId { get; set; }
     public string ParcelDescription { get; set; } = string.Empty;
+    public string? ExternalRef { get; set; }
+    public decimal? PickupLatitude { get; set; }
+    public decimal? PickupLongitude { get; set; }
+    public decimal? DeliveryLatitude { get; set; }
+    public decimal? DeliveryLongitude { get; set; }
+    public string? PickupFormattedAddress { get; set; }
+    public string? DeliveryFormattedAddress { get; set; }
+    public Guid? CustomerId { get; set; }
+    public Guid? FixedRouteTemplateId { get; set; }
+    public DateOnly? HeldUntil { get; set; }
     public DateTime? ScheduledWindowStart { get; set; }
     public DateTime? ScheduledWindowEnd { get; set; }
+    public DateTime? DeliveredAt { get; set; }
+    public DateTime? FailedAt { get; set; }
+    public string? FailureReason { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    public Fleet Fleet { get; set; } = null!;
-    public BusinessAccount? BusinessAccount { get; set; }
+    public TenantEntity Tenant { get; set; } = null!;
     public DeliveryAssignment? Assignment { get; set; }
 }

@@ -1,15 +1,27 @@
-using UniConnect.Domain.Enums;
+using UniConnect.Tenant.Enums;
 
 namespace UniConnect.Application.Interfaces;
 
 public interface ICurrentUserService
 {
     Guid? UserId { get; }
-    Guid? FleetId { get; }
-    FleetType? FleetType { get; }
+    Guid? TenantId { get; }
+    ProductModule ProductModules { get; }
     string? Email { get; }
     string? DisplayName { get; }
     bool IsPlatformAdmin { get; }
-    void EnsureFleetAccess(Guid fleetId);
-    void EnsureVehicleFleetAccess(Guid vehicleFleetId);
+    bool IsApiKeyAuth { get; }
+    Guid? ApiKeyId { get; }
+    TenantRole? TenantRole { get; }
+    bool IsTenantAdmin { get; }
+    bool IsDriver { get; }
+    Guid? DriverId { get; }
+    bool HasModule(ProductModule module);
+    void EnsureModule(ProductModule module);
+    void EnsureModules(params ProductModule[] modules);
+    void EnsureTenantAccess(Guid tenantId);
+    void EnsureVehicleTenantAccess(Guid vehicleTenantId);
+    void EnsureTenantAdmin();
+    void EnsureDispatcher();
+    void EnsureDriverSelf(Guid driverId);
 }

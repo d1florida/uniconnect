@@ -1,4 +1,5 @@
-using UniConnect.Application.DTOs;
+using UniConnect.GeneralFleet.DTOs;
+using UniConnect.GeneralFleet.Enums;
 using UniConnect.RoboTaxi.Enums;
 
 namespace UniConnect.RoboTaxi.DTOs;
@@ -15,11 +16,13 @@ public record RoboTaxiProfileDto(
 
 public record RoboTaxiVehicleDto(
     Guid Id,
-    Guid FleetId,
+    Guid TenantId,
     string Vin,
     string Make,
     string Model,
     int Year,
+    AssetCategory Category,
+    string VehicleNumber,
     string LicensePlate,
     int CurrentMileage,
     RoboTaxiProfileDto Profile,
@@ -30,6 +33,8 @@ public record CreateRoboTaxiVehicleRequest(
     string Make,
     string Model,
     int Year,
+    AssetCategory Category,
+    string VehicleNumber,
     string LicensePlate,
     int CurrentMileage,
     AutonomyLevel AutonomyLevel,
@@ -43,6 +48,8 @@ public record UpdateRoboTaxiStateRequest(
 
 public record RoboTaxiTrackingDto(
     Guid VehicleId,
+    AssetCategory Category,
+    string VehicleNumber,
     string LicensePlate,
     OperationalState OperationalState,
     LocationDto? LatestLocation);

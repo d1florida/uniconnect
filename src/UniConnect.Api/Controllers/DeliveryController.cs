@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using UniConnect.Application.DTOs;
+using UniConnect.Application.Interfaces;
 using UniConnect.Delivery.DTOs;
-using UniConnect.Delivery.Enums;
 using UniConnect.Delivery.Interfaces;
+using UniConnect.Infrastructure.Services.RoutePlanning;
+using UniConnect.Insights.DTOs;
+using UniConnect.Insights.Interfaces;
 
 namespace UniConnect.Api.Controllers;
 
@@ -11,43 +13,56 @@ namespace UniConnect.Api.Controllers;
 [ApiController]
 [Route("api/delivery")]
 [Tags("Delivery")]
-public class DeliveryController(IDeliveryService deliveryService) : ControllerBase
+public class DeliveryController(
+    IDeliveryService deliveryService,
+    IDriverDirectory drivers,
+    IDriverScheduleRequestService scheduleRequests,
+    IDepotDirectory depotDirectory,
+    ICustomerDirectory customerDirectory,
+    IFixedRouteDirectory fixedRoutes,
+    OrderGeocodingHelper orderGeocoding,
+    ICurrentUserService currentUser) : ControllerBase
 {
     [HttpGet("dashboard")]
     public async Task<ActionResult<DeliveryDashboardDto>> GetDashboard(CancellationToken ct) =>
         Ok(await deliveryService.GetDashboardAsync(ct));
 
-    [HttpGet("fleets")]
-    public async Task<ActionResult<IReadOnlyList<FleetDto>>> GetFleets(CancellationToken ct) =>
-        Ok(await deliveryService.GetFleetsAsync(ct));
+    [HttpGet("tenants/{tenantId:guid}/orders")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryOrderDto>>> GetOrders(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetOrdersAsync(tenantId, ct));
 
-    [HttpPost("fleets")]
-    public async Task<ActionResult<FleetDto>> CreateFleet([FromBody] CreateFleetRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateFleetAsync(request.Name, request.Slug, ct));
+    [HttpPost("tenants/{tenantId:guid}/orders")]
+    public async Task<ActionResult<DeliveryOrderDto>> CreateOrder(Guid tenantId, [FromBody] CreateDeliveryOrderRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.CreateOrderAsync(tenantId, request, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/business-accounts")]
-    public async Task<ActionResult<IReadOnlyList<BusinessAccountDto>>> GetBusinessAccounts(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetBusinessAccountsAsync(fleetId, ct));
+    [HttpPost("tenants/{tenantId:guid}/check-addresses")]
+    public async Task<ActionResult<CheckAddressesResultDto>> CheckAddresses(
+        Guid tenantId,
+        [FromBody] CheckAddressesRequest request,
+        CancellationToken ct)
+    {
+        currentUser.EnsureTenantAccess(tenantId);
+        return Ok(await orderGeocoding.CheckAddressesAsync(tenantId, request.PickupAddress, request.DeliveryAddress, ct));
+    }
 
-    [HttpPost("fleets/{fleetId:guid}/business-accounts")]
-    public async Task<ActionResult<BusinessAccountDto>> CreateBusinessAccount(Guid fleetId, [FromBody] CreateBusinessAccountRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateBusinessAccountAsync(fleetId, request, ct));
+    [HttpGet("tenants/{tenantId:guid}/vehicles")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryVehicleDto>>> GetVehicles(
+        Guid tenantId,
+        [FromQuery] Guid? depotId,
+        CancellationToken ct) =>
+        Ok(await deliveryService.GetVehiclesAsync(tenantId, depotId, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/orders")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryOrderDto>>> GetOrders(Guid fleetId, [FromQuery] DeliveryChannel? channel, CancellationToken ct) =>
-        Ok(await deliveryService.GetOrdersAsync(fleetId, channel, ct));
+    [HttpPatch("tenants/{tenantId:guid}/vehicles/{vehicleId:guid}/home-depot")]
+    public async Task<ActionResult<DeliveryVehicleDto>> AssignVehicleHomeDepot(
+        Guid tenantId,
+        Guid vehicleId,
+        [FromBody] AssignVehicleHomeDepotRequest request,
+        CancellationToken ct) =>
+        Ok(await deliveryService.AssignVehicleHomeDepotAsync(tenantId, vehicleId, request, ct));
 
-    [HttpPost("fleets/{fleetId:guid}/orders")]
-    public async Task<ActionResult<DeliveryOrderDto>> CreateOrder(Guid fleetId, [FromBody] CreateDeliveryOrderRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateOrderAsync(fleetId, request, ct));
-
-    [HttpGet("fleets/{fleetId:guid}/vehicles")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryVehicleDto>>> GetVehicles(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetVehiclesAsync(fleetId, ct));
-
-    [HttpGet("fleets/{fleetId:guid}/tracking")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryTrackingDto>>> GetTracking(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetTrackingAsync(fleetId, ct));
+    [HttpGet("tenants/{tenantId:guid}/tracking")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryTrackingDto>>> GetTracking(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetTrackingAsync(tenantId, ct));
 
     [HttpGet("orders/{orderId:guid}")]
     public async Task<ActionResult<DeliveryOrderDto>> GetOrder(Guid orderId, CancellationToken ct)
@@ -55,6 +70,10 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
         var order = await deliveryService.GetOrderAsync(orderId, ct);
         return order is null ? NotFound() : Ok(order);
     }
+
+    [HttpPut("orders/{orderId:guid}")]
+    public async Task<ActionResult<DeliveryOrderDto>> UpdateOrder(Guid orderId, [FromBody] UpdateDeliveryOrderRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.UpdateOrderAsync(orderId, request, ct));
 
     [HttpPatch("orders/{orderId:guid}/status")]
     public async Task<ActionResult<DeliveryOrderDto>> UpdateStatus(Guid orderId, [FromBody] UpdateDeliveryStatusRequest request, CancellationToken ct) =>
@@ -64,13 +83,13 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
     public async Task<ActionResult<DeliveryOrderDto>> Assign(Guid orderId, [FromBody] AssignDeliveryRequest request, CancellationToken ct) =>
         Ok(await deliveryService.AssignAsync(orderId, request, ct));
 
-    [HttpGet("fleets/{fleetId:guid}/routes")]
-    public async Task<ActionResult<IReadOnlyList<DeliveryRouteDto>>> GetRoutes(Guid fleetId, CancellationToken ct) =>
-        Ok(await deliveryService.GetRoutesAsync(fleetId, ct));
+    [HttpGet("tenants/{tenantId:guid}/routes")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryRouteDto>>> GetRoutes(Guid tenantId, CancellationToken ct) =>
+        Ok(await deliveryService.GetRoutesAsync(tenantId, ct));
 
-    [HttpPost("fleets/{fleetId:guid}/routes")]
-    public async Task<ActionResult<DeliveryRouteDetailDto>> CreateRoute(Guid fleetId, [FromBody] CreateDeliveryRouteRequest request, CancellationToken ct) =>
-        Ok(await deliveryService.CreateRouteAsync(fleetId, request, ct));
+    [HttpPost("tenants/{tenantId:guid}/routes")]
+    public async Task<ActionResult<DeliveryRouteDetailDto>> CreateRoute(Guid tenantId, [FromBody] CreateDeliveryRouteRequest request, CancellationToken ct) =>
+        Ok(await deliveryService.CreateRouteAsync(tenantId, request, ct));
 
     [HttpGet("routes/{routeId:guid}")]
     public async Task<ActionResult<DeliveryRouteDetailDto>> GetRoute(Guid routeId, CancellationToken ct)
@@ -113,4 +132,216 @@ public class DeliveryController(IDeliveryService deliveryService) : ControllerBa
     [HttpPatch("routes/{routeId:guid}/stops/{stopId:guid}/status")]
     public async Task<ActionResult<DeliveryRouteStopDto>> UpdateStopStatus(Guid routeId, Guid stopId, [FromBody] UpdateStopStatusRequest request, CancellationToken ct) =>
         Ok(await deliveryService.UpdateStopStatusAsync(routeId, stopId, request, ct));
+
+    [HttpGet("tenants/{tenantId:guid}/drivers")]
+    public async Task<ActionResult<IReadOnlyList<DriverDto>>> GetDrivers(Guid tenantId, CancellationToken ct) =>
+        Ok(await drivers.GetDriversAsync(tenantId, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/drivers")]
+    public async Task<ActionResult<DriverDto>> CreateDriver(Guid tenantId, [FromBody] CreateDriverRequest request, CancellationToken ct) =>
+        Ok(await drivers.CreateDriverAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/drivers/{driverId:guid}")]
+    public async Task<ActionResult<DriverDto>> UpdateDriver(Guid tenantId, Guid driverId, [FromBody] UpdateDriverRequest request, CancellationToken ct) =>
+        Ok(await drivers.UpdateDriverAsync(tenantId, driverId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/drivers/{driverId:guid}")]
+    public async Task<IActionResult> DeleteDriver(Guid tenantId, Guid driverId, CancellationToken ct)
+    {
+        await drivers.DeleteDriverAsync(tenantId, driverId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("tenants/{tenantId:guid}/drivers/{driverId:guid}/work-pattern")]
+    public async Task<ActionResult<IReadOnlyList<DriverWorkPatternDayDto>>> GetDriverWorkPattern(
+        Guid tenantId,
+        Guid driverId,
+        CancellationToken ct) =>
+        Ok(await drivers.GetWorkPatternAsync(tenantId, driverId, ct));
+
+    [HttpPut("tenants/{tenantId:guid}/drivers/{driverId:guid}/work-pattern")]
+    public async Task<ActionResult<IReadOnlyList<DriverWorkPatternDayDto>>> UpdateDriverWorkPattern(
+        Guid tenantId,
+        Guid driverId,
+        [FromBody] IReadOnlyList<UpdateDriverWorkPatternDayRequest> pattern,
+        CancellationToken ct) =>
+        Ok(await drivers.UpdateWorkPatternAsync(tenantId, driverId, pattern, ct));
+
+    [HttpGet("tenants/{tenantId:guid}/drivers/schedule")]
+    public async Task<ActionResult<IReadOnlyList<ResolvedDriverScheduleDto>>> GetDriverSchedule(
+        Guid tenantId,
+        [FromQuery] DateOnly date,
+        CancellationToken ct) =>
+        Ok(await drivers.GetResolvedScheduleAsync(tenantId, date, ct));
+
+    [HttpGet("tenants/{tenantId:guid}/drivers/calendar")]
+    public async Task<ActionResult<DriverCalendarDto>> GetDriverCalendar(
+        Guid tenantId,
+        [FromQuery] DateOnly from,
+        [FromQuery] DateOnly to,
+        CancellationToken ct) =>
+        Ok(await drivers.GetDriverCalendarAsync(tenantId, from, to, ct));
+
+    [HttpPut("tenants/{tenantId:guid}/drivers/{driverId:guid}/schedule-exceptions")]
+    public async Task<ActionResult<DriverScheduleExceptionDto>> UpsertScheduleException(
+        Guid tenantId,
+        Guid driverId,
+        [FromBody] UpsertDriverScheduleExceptionRequest request,
+        CancellationToken ct) =>
+        Ok(await drivers.UpsertScheduleExceptionAsync(tenantId, driverId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/drivers/{driverId:guid}/schedule-exceptions/{date}")]
+    public async Task<IActionResult> DeleteScheduleException(
+        Guid tenantId,
+        Guid driverId,
+        DateOnly date,
+        CancellationToken ct)
+    {
+        await drivers.DeleteScheduleExceptionAsync(tenantId, driverId, date, ct);
+        return NoContent();
+    }
+
+    [HttpPut("tenants/{tenantId:guid}/drivers/{driverId:guid}/schedule-exceptions/bulk")]
+    public async Task<ActionResult<IReadOnlyList<DriverScheduleExceptionDto>>> BulkUpsertScheduleExceptions(
+        Guid tenantId,
+        Guid driverId,
+        [FromBody] BulkUpsertDriverScheduleExceptionRequest request,
+        CancellationToken ct) =>
+        Ok(await drivers.BulkUpsertScheduleExceptionsAsync(tenantId, driverId, request, ct));
+
+    [HttpGet("tenants/{tenantId:guid}/schedule-requests")]
+    public async Task<ActionResult<IReadOnlyList<DriverScheduleRequestDto>>> GetScheduleRequests(
+        Guid tenantId,
+        [FromQuery] string? status,
+        CancellationToken ct) =>
+        Ok(await scheduleRequests.GetRequestsAsync(tenantId, status, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/schedule-requests")]
+    public async Task<ActionResult<DriverScheduleRequestDto>> CreateScheduleRequest(
+        Guid tenantId,
+        [FromBody] CreateDriverScheduleRequestRequest request,
+        CancellationToken ct) =>
+        Ok(await scheduleRequests.CreateRequestAsync(tenantId, request, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/schedule-requests/{requestId:guid}/approve")]
+    public async Task<ActionResult<DriverScheduleRequestDto>> ApproveScheduleRequest(
+        Guid tenantId,
+        Guid requestId,
+        [FromBody] ReviewDriverScheduleRequestRequest? review,
+        CancellationToken ct) =>
+        Ok(await scheduleRequests.ApproveRequestAsync(tenantId, requestId, review, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/schedule-requests/{requestId:guid}/deny")]
+    public async Task<ActionResult<DriverScheduleRequestDto>> DenyScheduleRequest(
+        Guid tenantId,
+        Guid requestId,
+        [FromBody] ReviewDriverScheduleRequestRequest? review,
+        CancellationToken ct) =>
+        Ok(await scheduleRequests.DenyRequestAsync(tenantId, requestId, review, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/schedule-requests/{requestId:guid}")]
+    public async Task<IActionResult> CancelScheduleRequest(
+        Guid tenantId,
+        Guid requestId,
+        CancellationToken ct)
+    {
+        await scheduleRequests.CancelRequestAsync(tenantId, requestId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("tenants/{tenantId:guid}/customers")]
+    public async Task<ActionResult<IReadOnlyList<CustomerDto>>> GetCustomers(Guid tenantId, [FromQuery] bool includeInactive = false, CancellationToken ct = default) =>
+        Ok(await customerDirectory.GetCustomersAsync(tenantId, includeInactive, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/customers")]
+    public async Task<ActionResult<CustomerDto>> CreateCustomer(Guid tenantId, [FromBody] CreateCustomerRequest request, CancellationToken ct) =>
+        Ok(await customerDirectory.CreateCustomerAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/customers/{customerId:guid}")]
+    public async Task<ActionResult<CustomerDto>> UpdateCustomer(Guid tenantId, Guid customerId, [FromBody] UpdateCustomerRequest request, CancellationToken ct) =>
+        Ok(await customerDirectory.UpdateCustomerAsync(tenantId, customerId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/customers/{customerId:guid}")]
+    public async Task<IActionResult> DeleteCustomer(Guid tenantId, Guid customerId, CancellationToken ct)
+    {
+        await customerDirectory.DeleteCustomerAsync(tenantId, customerId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("tenants/{tenantId:guid}/depots")]
+    public async Task<ActionResult<IReadOnlyList<DepotDto>>> GetDepots(Guid tenantId, [FromQuery] bool includeInactive = false, CancellationToken ct = default) =>
+        Ok(await depotDirectory.GetDepotsAsync(tenantId, includeInactive, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/depots")]
+    public async Task<ActionResult<DepotDto>> CreateDepot(Guid tenantId, [FromBody] CreateDepotRequest request, CancellationToken ct) =>
+        Ok(await depotDirectory.CreateDepotAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/depots/{depotId:guid}")]
+    public async Task<ActionResult<DepotDto>> UpdateDepot(Guid tenantId, Guid depotId, [FromBody] UpdateDepotRequest request, CancellationToken ct) =>
+        Ok(await depotDirectory.UpdateDepotAsync(tenantId, depotId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/depots/{depotId:guid}")]
+    public async Task<IActionResult> DeleteDepot(Guid tenantId, Guid depotId, CancellationToken ct)
+    {
+        await depotDirectory.DeleteDepotAsync(tenantId, depotId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("tenants/{tenantId:guid}/delivery-zones")]
+    public async Task<ActionResult<IReadOnlyList<DeliveryZoneDto>>> GetDeliveryZones(
+        Guid tenantId,
+        [FromQuery] bool includeInactive = false,
+        CancellationToken ct = default) =>
+        Ok(await fixedRoutes.GetZonesAsync(tenantId, includeInactive, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/delivery-zones")]
+    public async Task<ActionResult<DeliveryZoneDto>> CreateDeliveryZone(
+        Guid tenantId,
+        [FromBody] CreateDeliveryZoneRequest request,
+        CancellationToken ct) =>
+        Ok(await fixedRoutes.CreateZoneAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/delivery-zones/{zoneId:guid}")]
+    public async Task<ActionResult<DeliveryZoneDto>> UpdateDeliveryZone(
+        Guid tenantId,
+        Guid zoneId,
+        [FromBody] UpdateDeliveryZoneRequest request,
+        CancellationToken ct) =>
+        Ok(await fixedRoutes.UpdateZoneAsync(tenantId, zoneId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/delivery-zones/{zoneId:guid}")]
+    public async Task<IActionResult> DeleteDeliveryZone(Guid tenantId, Guid zoneId, CancellationToken ct)
+    {
+        await fixedRoutes.DeleteZoneAsync(tenantId, zoneId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("tenants/{tenantId:guid}/fixed-route-templates")]
+    public async Task<ActionResult<IReadOnlyList<FixedRouteTemplateDto>>> GetFixedRouteTemplates(
+        Guid tenantId,
+        [FromQuery] bool includeInactive = false,
+        CancellationToken ct = default) =>
+        Ok(await fixedRoutes.GetTemplatesAsync(tenantId, includeInactive, ct));
+
+    [HttpPost("tenants/{tenantId:guid}/fixed-route-templates")]
+    public async Task<ActionResult<FixedRouteTemplateDto>> CreateFixedRouteTemplate(
+        Guid tenantId,
+        [FromBody] CreateFixedRouteTemplateRequest request,
+        CancellationToken ct) =>
+        Ok(await fixedRoutes.CreateTemplateAsync(tenantId, request, ct));
+
+    [HttpPatch("tenants/{tenantId:guid}/fixed-route-templates/{templateId:guid}")]
+    public async Task<ActionResult<FixedRouteTemplateDto>> UpdateFixedRouteTemplate(
+        Guid tenantId,
+        Guid templateId,
+        [FromBody] UpdateFixedRouteTemplateRequest request,
+        CancellationToken ct) =>
+        Ok(await fixedRoutes.UpdateTemplateAsync(tenantId, templateId, request, ct));
+
+    [HttpDelete("tenants/{tenantId:guid}/fixed-route-templates/{templateId:guid}")]
+    public async Task<IActionResult> DeleteFixedRouteTemplate(Guid tenantId, Guid templateId, CancellationToken ct)
+    {
+        await fixedRoutes.DeleteTemplateAsync(tenantId, templateId, ct);
+        return NoContent();
+    }
 }

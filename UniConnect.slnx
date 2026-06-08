@@ -3,7 +3,10 @@
     <Project Path="src/UniConnect.Api/UniConnect.Api.csproj" />
     <Project Path="src/UniConnect.Application/UniConnect.Application.csproj" />
     <Project Path="src/UniConnect.Delivery/UniConnect.Delivery.csproj" />
-    <Project Path="src/UniConnect.Domain/UniConnect.Domain.csproj" />
+    <Project Path="src/UniConnect.Insights/UniConnect.Insights.csproj" />
+    <Project Path="src/UniConnect.RoutePlanning/UniConnect.RoutePlanning.csproj" />
+    <Project Path="src/UniConnect.Tenant/UniConnect.Tenant.csproj" />
+    <Project Path="src/UniConnect.GeneralFleet/UniConnect.GeneralFleet.csproj" />
     <Project Path="src/UniConnect.Infrastructure/UniConnect.Infrastructure.csproj" />
     <Project Path="src/UniConnect.RoboTaxi/UniConnect.RoboTaxi.csproj" />
   </Folder>

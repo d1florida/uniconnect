@@ -17,9 +17,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\UniConnect.Application\UniConnect.Application.csproj" />
+    <ProjectReference Include="..\UniConnect.Tenant\UniConnect.Tenant.csproj" />
+    <ProjectReference Include="..\UniConnect.GeneralFleet\UniConnect.GeneralFleet.csproj" />
     <ProjectReference Include="..\UniConnect.Infrastructure\UniConnect.Infrastructure.csproj" />
     <ProjectReference Include="..\UniConnect.RoboTaxi\UniConnect.RoboTaxi.csproj" />
     <ProjectReference Include="..\UniConnect.Delivery\UniConnect.Delivery.csproj" />
+    <ProjectReference Include="..\UniConnect.Insights\UniConnect.Insights.csproj" />
+    <ProjectReference Include="..\UniConnect.RoutePlanning\UniConnect.RoutePlanning.csproj" />
   </ItemGroup>
 
 </Project>

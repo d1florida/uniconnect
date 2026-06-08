@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\UniConnect.Domain\UniConnect.Domain.csproj" />
+    <ProjectReference Include="..\UniConnect.Tenant\UniConnect.Tenant.csproj" />
+    <ProjectReference Include="..\UniConnect.GeneralFleet\UniConnect.GeneralFleet.csproj" />
     <ProjectReference Include="..\UniConnect.RoboTaxi\UniConnect.RoboTaxi.csproj" />
-    <ProjectReference Include="..\UniConnect.Application\UniConnect.Application.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

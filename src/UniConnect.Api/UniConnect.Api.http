@@ -4,11 +4,26 @@
 GET {{UniConnect.Api_HostAddress}}/api/health
 Accept: application/json
 
-### Login (demo fleet operator)
+### Login (platform admin)
 POST {{UniConnect.Api_HostAddress}}/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "fleet@demo.local",
+  "email": "admin@demo.local",
   "password": "Demo123!"
 }
+
+### Platform — list tenants
+GET {{UniConnect.Api_HostAddress}}/api/tenants
+Authorization: Bearer {{token}}
+Accept: application/json
+
+### Platform — tenant dashboard
+GET {{UniConnect.Api_HostAddress}}/api/tenants/dashboard
+Authorization: Bearer {{token}}
+Accept: application/json
+
+### General Fleet — tenant tracking
+GET {{UniConnect.Api_HostAddress}}/api/fleet/tenants/11111111-1111-1111-1111-111111111101/tracking
+Authorization: Bearer {{token}}
+Accept: application/json

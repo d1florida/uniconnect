@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\UniConnect.Tenant\UniConnect.Tenant.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>UniConnect.RoutePlanning</RootNamespace>
+    <AssemblyName>UniConnect.RoutePlanning</AssemblyName>
+  </PropertyGroup>
+
+</Project>
