@@ -9,7 +9,11 @@ using UniConnect.Tenant.Enums;
 
 namespace UniConnect.Infrastructure.Services.Insights;
 
-public class InsightsService(AppDbContext db, ICurrentUserService currentUser, IDriverDirectory drivers) : IInsightsService
+public class InsightsService(
+    AppDbContext db,
+    ICurrentUserService currentUser,
+    IDriverDirectory drivers,
+    ICustomerDirectory customers) : IInsightsService
 {
     public async Task<TenantDigestDto> GetTenantDigestAsync(Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct = default)
     {
@@ -39,14 +43,10 @@ public class InsightsService(AppDbContext db, ICurrentUserService currentUser, I
         return new TenantDigestDto(tenantId, from, to, deliveryKpis, planning);
     }
 
-    public async Task<IReadOnlyList<CustomerDto>> GetCustomersAsync(Guid tenantId, CancellationToken ct = default)
+    public Task<IReadOnlyList<CustomerDto>> GetCustomersAsync(Guid tenantId, CancellationToken ct = default)
     {
         EnsureInsightsAccess(tenantId);
-        return await db.Customers.AsNoTracking()
-            .Where(c => c.TenantId == tenantId)
-            .OrderBy(c => c.Name)
-            .Select(c => new CustomerDto(c.Id, c.Name, c.Phone, c.ExternalRef))
-            .ToListAsync(ct);
+        return customers.GetCustomersAsync(tenantId, includeInactive: false, ct);
     }
 
     public Task<IReadOnlyList<DriverDto>> GetDriversAsync(Guid tenantId, CancellationToken ct = default)

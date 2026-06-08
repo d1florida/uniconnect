@@ -7,6 +7,18 @@ public class Customer
     public string Name { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public string? ExternalRef { get; set; }
+    public string? DeliveryAddress { get; set; }
+    public decimal? DeliveryLatitude { get; set; }
+    public decimal? DeliveryLongitude { get; set; }
+    public string? DeliveryFormattedAddress { get; set; }
+    public string? DeliveryHours { get; set; }
+    public TimeOnly? DeliveryWindowStart { get; set; }
+    public TimeOnly? DeliveryWindowEnd { get; set; }
+    public TimeOnly? NoDeliveryStart { get; set; }
+    public TimeOnly? NoDeliveryEnd { get; set; }
+    public Guid? DeliveryZoneId { get; set; }
+    public string? Notes { get; set; }
+    public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
 }
 
@@ -17,6 +29,12 @@ public class Driver
     public string DisplayName { get; set; } = string.Empty;
     public Guid? UserId { get; set; }
     public bool IsActive { get; set; } = true;
+    public TimeOnly ShiftStartTime { get; set; } = new(7, 0);
+    public TimeOnly ShiftEndTime { get; set; } = new(17, 0);
+    public int LunchMinutes { get; set; } = 30;
+    public int BreakMinutes { get; set; } = 15;
+    public int? MaxRouteMinutes { get; set; }
+    public TimeOnly? ReturnByTime { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

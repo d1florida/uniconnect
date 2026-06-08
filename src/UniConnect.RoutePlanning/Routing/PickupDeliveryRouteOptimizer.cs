@@ -10,7 +10,8 @@ public sealed record PlanningStop(
     GeoPoint Location,
     string? RecipientName,
     string? ParcelDescription,
-    Guid? RouteStopId = null);
+    Guid? RouteStopId = null,
+    CustomerDeliveryWindow? DeliveryWindow = null);
 
 public sealed record OrderForPlanning(
     Guid Id,
@@ -19,7 +20,8 @@ public sealed record OrderForPlanning(
     GeoPoint Pickup,
     GeoPoint Delivery,
     string RecipientName,
-    string ParcelDescription);
+    string ParcelDescription,
+    CustomerDeliveryWindow? DeliveryWindow = null);
 
 public static class PickupDeliveryRouteOptimizer
 {
@@ -29,38 +31,18 @@ public static class PickupDeliveryRouteOptimizer
         IReadOnlyList<OrderForPlanning> orders,
         int vehicleCount,
         int maxOrdersPerRoute,
-        ITravelTimeMatrix matrix)
-    {
-        if (vehicleCount <= 0 || maxOrdersPerRoute <= 0 || orders.Count == 0)
-            return [];
-
-        var remaining = orders.ToList();
-        var routes = new List<IReadOnlyList<OrderForPlanning>>();
-
-        for (var v = 0; v < vehicleCount && remaining.Count > 0; v++)
-        {
-            var route = new List<OrderForPlanning>();
-            var current = depot;
-
-            while (route.Count < maxOrdersPerRoute && remaining.Count > 0)
-            {
-                var next = remaining
-                    .OrderBy(o => matrix.TravelMinutes(
-                        current,
-                        IsPickupAtDepot(o, depot, depotAddress) ? o.Delivery : o.Pickup))
-                    .ThenBy(o => matrix.TravelMinutes(o.Pickup, o.Delivery))
-                    .First();
-                remaining.Remove(next);
-                route.Add(next);
-                current = next.Delivery;
-            }
-
-            if (route.Count > 0)
-                routes.Add(route);
-        }
-
-        return routes;
-    }
+        ITravelTimeMatrix matrix,
+        int? maxRouteMinutes = null,
+        int serviceMinutesPerStop = 5) =>
+        ClarkeWrightPartitioner.Partition(
+            depot,
+            depotAddress,
+            orders,
+            vehicleCount,
+            maxOrdersPerRoute,
+            matrix,
+            maxRouteMinutes,
+            serviceMinutesPerStop);
 
     public static bool IsPickupAtDepot(OrderForPlanning order, GeoPoint depot, string depotAddress) =>
         DepotPickupMatcher.IsPickupAtDepot(order.PickupAddress, order.Pickup, depot, depotAddress);
@@ -90,7 +72,8 @@ public static class PickupDeliveryRouteOptimizer
                 order.DeliveryAddress,
                 order.Delivery,
                 order.RecipientName,
-                order.ParcelDescription));
+                order.ParcelDescription,
+                DeliveryWindow: order.DeliveryWindow));
         }
 
         return stops;
@@ -127,12 +110,29 @@ public static class PickupDeliveryRouteOptimizer
         GeoPoint depot,
         IReadOnlyList<PlanningStop> stops,
         ITravelTimeMatrix matrix,
-        IReadOnlySet<Guid>? pickedUpAtDepot = null)
+        IReadOnlySet<Guid>? pickedUpAtDepot = null,
+        TimeOnly? routeStartTime = null,
+        int serviceMinutesPerStop = 5)
     {
         var pickedUp = pickedUpAtDepot is null ? [] : pickedUpAtDepot.ToHashSet();
+        var startTime = routeStartTime ?? DriverSchedule.DefaultShiftStart;
+        var greedy = OptimizeStopSequenceGreedy(depot, stops, matrix, pickedUp, startTime, serviceMinutesPerStop);
+        return ImproveStopSequenceTwoOpt(depot, greedy, matrix, pickedUp, startTime, serviceMinutesPerStop);
+    }
+
+    private static List<PlanningStop> OptimizeStopSequenceGreedy(
+        GeoPoint depot,
+        IReadOnlyList<PlanningStop> stops,
+        ITravelTimeMatrix matrix,
+        HashSet<Guid> pickedUp,
+        TimeOnly routeStartTime,
+        int serviceMinutesPerStop)
+    {
         var remaining = stops.ToList();
         var ordered = new List<PlanningStop>();
         var current = depot;
+        var currentTime = routeStartTime;
+        var hasWindows = stops.Any(s => s.DeliveryWindow is { HasConstraints: true });
 
         while (remaining.Count > 0)
         {
@@ -144,19 +144,197 @@ public static class PickupDeliveryRouteOptimizer
             if (eligible.Count == 0)
                 throw new InvalidOperationException("Unable to build a valid stop sequence: dropoff before pickup.");
 
-            var next = eligible
-                .OrderBy(s => matrix.TravelMinutes(current, s.Location))
-                .ThenBy(s => s.StopType == "Pickup" ? 0 : 1)
-                .First();
+            var next = hasWindows
+                ? SelectNextStopWithWindows(eligible, current, currentTime, matrix, serviceMinutesPerStop)
+                : eligible
+                    .OrderBy(s => matrix.TravelMinutes(current, s.Location))
+                    .ThenBy(s => s.StopType == "Pickup" ? 0 : 1)
+                    .First();
 
             remaining.Remove(next);
             ordered.Add(next);
             if (next.StopType == "Pickup" && next.OrderId.HasValue)
                 pickedUp.Add(next.OrderId.Value);
+
+            var travel = matrix.TravelMinutes(current, next.Location);
+            var arrival = CustomerDeliveryWindow.AddMinutes(currentTime, travel);
+            if (next.StopType == "Dropoff" && next.DeliveryWindow is { HasConstraints: true } window)
+                arrival = window.EvaluateArrival(arrival, serviceMinutesPerStop).AdjustedArrival;
+
+            currentTime = CustomerDeliveryWindow.AddMinutes(arrival, serviceMinutesPerStop);
             current = next.Location;
         }
 
         return ordered;
+    }
+
+    private static PlanningStop SelectNextStopWithWindows(
+        IReadOnlyList<PlanningStop> eligible,
+        GeoPoint current,
+        TimeOnly currentTime,
+        ITravelTimeMatrix matrix,
+        int serviceMinutesPerStop)
+    {
+        var urgent = eligible
+            .Select(s => new
+            {
+                Stop = s,
+                CriticalSlackMinutes = ComputeCriticalSlackMinutes(s, current, currentTime, matrix, serviceMinutesPerStop)
+            })
+            .Where(x => x.CriticalSlackMinutes.HasValue)
+            .OrderBy(x => x.CriticalSlackMinutes!.Value)
+            .FirstOrDefault();
+
+        if (urgent?.CriticalSlackMinutes <= 120)
+            return urgent.Stop;
+
+        return eligible
+            .OrderBy(s => ScoreStopCandidate(s, current, currentTime, matrix, serviceMinutesPerStop))
+            .ThenBy(s => s.StopType == "Pickup" ? 0 : 1)
+            .First();
+    }
+
+    private static int? ComputeCriticalSlackMinutes(
+        PlanningStop stop,
+        GeoPoint current,
+        TimeOnly currentTime,
+        ITravelTimeMatrix matrix,
+        int serviceMinutesPerStop)
+    {
+        if (stop.StopType != "Dropoff" || stop.DeliveryWindow is not { HasConstraints: true } window)
+            return null;
+
+        var deadline = window.EffectiveLatestArrival(serviceMinutesPerStop);
+        if (!deadline.HasValue)
+            return null;
+
+        var travel = matrix.TravelMinutes(current, stop.Location);
+        var mustArriveBy = deadline.Value;
+        var rawArrival = CustomerDeliveryWindow.AddMinutes(currentTime, travel);
+        return (int)(mustArriveBy.ToTimeSpan() - rawArrival.ToTimeSpan()).TotalMinutes;
+    }
+
+    private static int ScoreStopCandidate(
+        PlanningStop stop,
+        GeoPoint current,
+        TimeOnly currentTime,
+        ITravelTimeMatrix matrix,
+        int serviceMinutesPerStop)
+    {
+        var travel = matrix.TravelMinutes(current, stop.Location);
+        var rawArrival = CustomerDeliveryWindow.AddMinutes(currentTime, travel);
+        if (stop.StopType != "Dropoff" || stop.DeliveryWindow is not { HasConstraints: true } window)
+            return travel;
+
+        var windowScore = window.PlacementScoreMinutes(rawArrival, serviceMinutesPerStop);
+        var deadline = window.EffectiveLatestArrival(serviceMinutesPerStop);
+        if (deadline.HasValue && rawArrival > deadline.Value)
+        {
+            windowScore += CustomerDeliveryWindow.InfeasiblePlacementMinutes
+                + (int)(rawArrival.ToTimeSpan() - deadline.Value.ToTimeSpan()).TotalMinutes;
+        }
+
+        return travel + windowScore;
+    }
+
+    private static IReadOnlyList<PlanningStop> ImproveStopSequenceTwoOpt(
+        GeoPoint depot,
+        IReadOnlyList<PlanningStop> sequence,
+        ITravelTimeMatrix matrix,
+        HashSet<Guid> pickedUpAtDepot,
+        TimeOnly routeStartTime,
+        int serviceMinutesPerStop)
+    {
+        if (sequence.Count < 3)
+            return sequence;
+
+        var hasWindows = sequence.Any(s => s.DeliveryWindow is { HasConstraints: true });
+        var route = sequence.ToList();
+        var improved = true;
+
+        while (improved)
+        {
+            improved = false;
+            var currentCost = hasWindows
+                ? RouteScheduleSimulator.CompositeRouteCostMinutes(depot, route, matrix, serviceMinutesPerStop, routeStartTime)
+                : RouteTravelMinutes(depot, route, matrix);
+
+            for (var i = 0; i < route.Count - 1; i++)
+            {
+                for (var j = i + 1; j < route.Count; j++)
+                {
+                    var candidate = ReverseSegment(route, i, j);
+                    if (!IsValidStopSequence(candidate, pickedUpAtDepot))
+                        continue;
+
+                    var candidateCost = hasWindows
+                        ? RouteScheduleSimulator.CompositeRouteCostMinutes(depot, candidate, matrix, serviceMinutesPerStop, routeStartTime)
+                        : RouteTravelMinutes(depot, candidate, matrix);
+                    if (candidateCost >= currentCost)
+                        continue;
+
+                    route = candidate;
+                    currentCost = candidateCost;
+                    improved = true;
+                }
+            }
+        }
+
+        return route;
+    }
+
+    private static List<PlanningStop> ReverseSegment(IReadOnlyList<PlanningStop> route, int start, int end)
+    {
+        var copy = route.ToList();
+        copy.Reverse(start, end - start + 1);
+        return copy;
+    }
+
+    private static bool IsValidStopSequence(IReadOnlyList<PlanningStop> sequence, IReadOnlySet<Guid> pickedUpAtDepot)
+    {
+        var pickedUp = pickedUpAtDepot.ToHashSet();
+        var pickupIndex = new Dictionary<Guid, int>();
+        var dropoffIndex = new Dictionary<Guid, int>();
+
+        for (var i = 0; i < sequence.Count; i++)
+        {
+            var stop = sequence[i];
+            if (!stop.OrderId.HasValue)
+                continue;
+
+            if (stop.StopType == "Pickup")
+                pickupIndex[stop.OrderId.Value] = i;
+            else if (stop.StopType == "Dropoff")
+                dropoffIndex[stop.OrderId.Value] = i;
+        }
+
+        foreach (var orderId in dropoffIndex.Keys)
+        {
+            if (pickedUpAtDepot.Contains(orderId))
+                continue;
+
+            if (!pickupIndex.TryGetValue(orderId, out var pickup) || dropoffIndex[orderId] <= pickup)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static int RouteTravelMinutes(GeoPoint depot, IReadOnlyList<PlanningStop> stops, ITravelTimeMatrix matrix)
+    {
+        if (stops.Count == 0)
+            return 0;
+
+        var total = 0;
+        var current = depot;
+        foreach (var stop in stops)
+        {
+            total += matrix.TravelMinutes(current, stop.Location);
+            current = stop.Location;
+        }
+
+        total += matrix.TravelMinutes(current, depot);
+        return total;
     }
 
     public static int EstimateRouteMinutes(
@@ -168,16 +346,8 @@ public static class PickupDeliveryRouteOptimizer
         if (orderedStops.Count == 0)
             return 0;
 
-        var total = 0;
-        var current = depot;
-        foreach (var stop in orderedStops)
-        {
-            total += matrix.TravelMinutes(current, stop.Location);
-            total += serviceMinutesPerStop;
-            current = stop.Location;
-        }
-
-        total += matrix.TravelMinutes(current, depot);
+        var total = RouteTravelMinutes(depot, orderedStops, matrix);
+        total += serviceMinutesPerStop * orderedStops.Count;
         return total;
     }
 }

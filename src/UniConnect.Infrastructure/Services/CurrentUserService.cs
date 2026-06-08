@@ -58,6 +58,10 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor) : ICur
 
     public bool IsTenantAdmin => TenantRole == UniConnect.Tenant.Enums.TenantRole.Admin;
 
+    public bool IsDriver => TenantRole == UniConnect.Tenant.Enums.TenantRole.Driver;
+
+    public Guid? DriverId => Guid.TryParse(User?.FindFirstValue("driver_id"), out var id) ? id : null;
+
     public void EnsureTenantAdmin()
     {
         if (IsPlatformAdmin) return;
@@ -92,4 +96,18 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor) : ICur
     }
 
     public void EnsureVehicleTenantAccess(Guid vehicleTenantId) => EnsureTenantAccess(vehicleTenantId);
+
+    public void EnsureDispatcher()
+    {
+        if (IsPlatformAdmin) return;
+        if (IsDriver)
+            throw new ForbiddenException("Driver accounts cannot perform this action.");
+    }
+
+    public void EnsureDriverSelf(Guid driverId)
+    {
+        if (IsPlatformAdmin || !IsDriver) return;
+        if (!DriverId.HasValue || DriverId.Value != driverId)
+            throw new ForbiddenException("You can only access your own driver record.");
+    }
 }

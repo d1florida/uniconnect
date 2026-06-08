@@ -10,5 +10,12 @@ public interface IRoutePlanningService
     Task<AcceptPlanResultDto> AcceptPlanAsync(Guid planRunId, AcceptPlanRequest request, CancellationToken ct = default);
     Task<RoutePlanRunDto> DiscardPlanAsync(Guid planRunId, DiscardPlanRequest request, CancellationToken ct = default);
     Task<OptimizeSequenceResultDto> OptimizeRouteSequenceAsync(Guid routeId, OptimizeSequenceRequest request, CancellationToken ct = default);
-    Task<PlanReadinessDto> GetPlanReadinessAsync(Guid tenantId, Guid? depotId = null, CancellationToken ct = default);
+    Task<PlanReadinessDto> GetPlanReadinessAsync(
+        Guid tenantId,
+        Guid? depotId = null,
+        Guid? fixedRouteTemplateId = null,
+        DateOnly? scheduledDate = null,
+        CancellationToken ct = default);
+
+    Task<PlanRunExplanationDto> ExplainPlanRunAsync(Guid planRunId, CancellationToken ct = default);
 }

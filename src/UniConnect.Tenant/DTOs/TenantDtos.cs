@@ -61,5 +61,6 @@ public record UpdateMyTenantRequest(
     string ContactPhone);
 
 public record UpdateMyTenantAdminRequest(
+    string? DisplayName,
     string? Email,
     string? NewPassword);

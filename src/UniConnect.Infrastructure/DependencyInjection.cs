@@ -2,16 +2,19 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using UniConnect.Application.Interfaces;
 using UniConnect.Infrastructure.Auth;
 using UniConnect.Infrastructure.Data;
 using UniConnect.Infrastructure.Identity;
+using UniConnect.Infrastructure.Security;
 using UniConnect.Infrastructure.Services;
 using UniConnect.Delivery.Interfaces;
 using UniConnect.GeneralFleet.Interfaces;
@@ -27,7 +30,10 @@ namespace UniConnect.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IHostEnvironment? hostEnvironment = null)
     {
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("Default")));
@@ -82,9 +88,15 @@ public static class DependencyInjection
         services.AddScoped<IOperationalEventRecorder, OperationalEventRecorder>();
         services.AddScoped<ICustomerDirectory, CustomerDirectory>();
         services.AddScoped<IDriverDirectory, DriverDirectory>();
+        services.AddScoped<IDriverScheduleRequestService, DriverScheduleRequestService>();
+        services.AddScoped<IDriverScheduleResolver, DriverScheduleResolver>();
+        services.AddScoped<TenantDeliverySettingsService>();
+        services.AddScoped<ITenantDeliverySettingsService>(sp => sp.GetRequiredService<TenantDeliverySettingsService>());
         services.AddScoped<IDepotDirectory, DepotDirectory>();
+        services.AddScoped<IFixedRouteDirectory, FixedRouteDirectory>();
         services.AddScoped<IInsightsService, InsightsService>();
         services.Configure<RoutePlanningOptions>(configuration.GetSection(RoutePlanningOptions.SectionName));
+        services.Configure<PlanningRulesOptions>(configuration.GetSection(PlanningRulesOptions.SectionName));
         services.AddHttpClient(nameof(GeocodingService), (sp, client) =>
         {
             var opts = sp.GetRequiredService<IOptions<RoutePlanningOptions>>().Value;
@@ -98,6 +110,24 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(10);
         });
 
+        var dataProtection = services.AddDataProtection().SetApplicationName("UniConnect");
+        if (hostEnvironment is not null)
+        {
+            var keysPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "data-protection-keys");
+            Directory.CreateDirectory(keysPath);
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+        }
+
+        services.AddSingleton<ITenantSecretProtector, TenantSecretProtector>();
+        services.AddScoped<TenantGeocodingConfigProvider>();
+        services.AddScoped<ITenantGeocodingConfigProvider>(sp => sp.GetRequiredService<TenantGeocodingConfigProvider>());
+        services.AddScoped<TenantGeocodingSettingsService>();
+        services.AddScoped<ITenantGeocodingSettingsService>(sp => sp.GetRequiredService<TenantGeocodingSettingsService>());
+        services.AddHttpClient(GeocodingService.GoogleClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://maps.googleapis.com/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
         services.AddScoped<IGeocodingService, GeocodingService>();
         services.AddHttpClient(OsrmTravelMatrix.HttpClientName, (sp, client) =>
         {
@@ -108,6 +138,7 @@ public static class DependencyInjection
         });
         services.AddScoped<HaversineTravelMatrix>();
         services.AddScoped<OsrmTravelMatrix>();
+        services.AddScoped<ITravelMatrixBuilder, TravelMatrixBuilder>();
         services.AddScoped<ITravelTimeMatrix>(sp =>
         {
             var opts = sp.GetRequiredService<IOptions<RoutePlanningOptions>>().Value;
@@ -116,6 +147,13 @@ public static class DependencyInjection
                 : sp.GetRequiredService<HaversineTravelMatrix>();
         });
         services.AddScoped<OrderGeocodingHelper>();
+        services.AddHttpClient(nameof(PlanningPolicyCompiler));
+        services.AddHttpClient(nameof(PlanRunExplainer));
+        services.AddScoped<IPlanningPolicyCompiler, PlanningPolicyCompiler>();
+        services.AddScoped<IPlanningPolicyProvider, PlanningPolicyProvider>();
+        services.AddScoped<IPlanRunExplainer, PlanRunExplainer>();
+        services.AddScoped<TenantPlanningRulesService>();
+        services.AddScoped<ITenantPlanningRulesService>(sp => sp.GetRequiredService<TenantPlanningRulesService>());
         services.AddScoped<IRoutePlanningService, RoutePlanningService>();
 
         return services;

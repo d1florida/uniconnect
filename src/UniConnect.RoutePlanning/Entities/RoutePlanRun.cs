@@ -11,6 +11,7 @@ public class RoutePlanRun
     public DateOnly ScheduledDate { get; set; }
     public string DepotAddress { get; set; } = string.Empty;
     public Guid? DepotId { get; set; }
+    public Guid? FixedRouteTemplateId { get; set; }
     public int OrdersRequested { get; set; }
     public int OrdersPlanned { get; set; }
     public int OrdersUnassigned { get; set; }

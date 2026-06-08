@@ -64,6 +64,16 @@ public class AuthService(
         }
 
         var isTenantAdmin = user.TenantId.HasValue && user.TenantRole == TenantRole.Admin;
+        Guid? driverId = null;
+        if (user.TenantId.HasValue)
+        {
+            driverId = await db.Drivers.AsNoTracking()
+                .Where(d => d.TenantId == user.TenantId && d.UserId == user.Id && d.IsActive)
+                .Select(d => (Guid?)d.Id)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        var isDriver = user.TenantRole == TenantRole.Driver;
         return new UserProfileDto(
             user.Id,
             user.Email!,
@@ -73,7 +83,9 @@ public class AuthService(
             modules,
             isPlatformAdmin,
             user.TenantId.HasValue ? user.TenantRole : null,
-            isTenantAdmin);
+            isTenantAdmin,
+            driverId,
+            isDriver);
     }
 
     private string GenerateToken(ApplicationUser user, UserProfileDto profile, DateTime expires)
@@ -96,6 +108,9 @@ public class AuthService(
 
         if (profile.IsPlatformAdmin)
             claims.Add(new Claim("role", "PlatformAdmin"));
+
+        if (profile.DriverId.HasValue)
+            claims.Add(new Claim("driver_id", profile.DriverId.Value.ToString()));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

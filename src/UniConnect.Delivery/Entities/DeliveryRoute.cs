@@ -17,6 +17,7 @@ public class DeliveryRoute
     public Guid? DriverId { get; set; }
     public AutomationMode? AutomationMode { get; set; }
     public Guid? RoutePlanRunId { get; set; }
+    public Guid? FixedRouteTemplateId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

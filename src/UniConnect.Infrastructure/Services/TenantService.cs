@@ -320,6 +320,17 @@ public class TenantService(
         if (user.TenantId != tenantId)
             throw new ForbiddenException("You do not have access to this tenant.");
 
+        if (request.DisplayName is not null)
+        {
+            var displayName = request.DisplayName.Trim();
+            if (string.IsNullOrWhiteSpace(displayName))
+                throw new ArgumentException("Display name cannot be empty.");
+            user.DisplayName = displayName;
+            var updateNameResult = await userManager.UpdateAsync(user);
+            if (!updateNameResult.Succeeded)
+                throw new ArgumentException(FormatIdentityErrors(updateNameResult.Errors));
+        }
+
         if (request.Email is not null)
         {
             var newEmail = request.Email.Trim();

@@ -8,7 +8,9 @@ public record TenantUserDto(
     string DisplayName,
     TenantRole Role,
     IReadOnlyList<ProductModule> ModuleAccess,
-    bool IsActive);
+    bool IsActive,
+    Guid? LinkedDriverId = null,
+    string? LinkedDriverName = null);
 
 public record CreateTenantUserRequest(
     string Email,
@@ -19,6 +21,8 @@ public record CreateTenantUserRequest(
 
 public record UpdateTenantUserRequest(
     string? DisplayName,
+    string? Email,
+    string? NewPassword,
     TenantRole? Role,
     IReadOnlyList<ProductModule>? ModuleAccess,
     bool? IsActive);

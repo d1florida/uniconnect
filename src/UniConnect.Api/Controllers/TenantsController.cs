@@ -13,7 +13,10 @@ namespace UniConnect.Api.Controllers;
 public class TenantsController(
     ITenantService tenantService,
     ITenantApiKeyService apiKeyService,
-    ITenantUserService tenantUserService) : ControllerBase
+    ITenantUserService tenantUserService,
+    ITenantGeocodingSettingsService geocodingSettings,
+    ITenantPlanningRulesService planningRules,
+    ITenantDeliverySettingsService deliverySettings) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TenantDto>>> GetTenants([FromQuery] ProductModule? module, CancellationToken ct) =>
@@ -55,6 +58,54 @@ public class TenantsController(
         await apiKeyService.RevokeMyKeyAsync(keyId, ct);
         return NoContent();
     }
+
+    [HttpGet("me/geocoding")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TenantGeocodingSettingsDto>> GetMyGeocodingSettings(CancellationToken ct) =>
+        Ok(await geocodingSettings.GetMySettingsAsync(ct));
+
+    [HttpPut("me/geocoding")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TenantGeocodingSettingsDto>> UpdateMyGeocodingSettings(
+        [FromBody] UpdateTenantGeocodingSettingsRequest request,
+        CancellationToken ct) =>
+        Ok(await geocodingSettings.UpdateMySettingsAsync(request, ct));
+
+    [HttpPost("me/geocoding/test")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TestTenantGeocodingResultDto>> TestMyGeocodingSettings(
+        [FromBody] TestTenantGeocodingRequest request,
+        CancellationToken ct) =>
+        Ok(await geocodingSettings.TestMyGeocodingAsync(request, ct));
+
+    [HttpGet("me/planning-rules")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TenantPlanningRulesDto>> GetMyPlanningRules(CancellationToken ct) =>
+        Ok(await planningRules.GetMyRulesAsync(ct));
+
+    [HttpPut("me/planning-rules")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TenantPlanningRulesDto>> UpdateMyPlanningRules(
+        [FromBody] UpdateTenantPlanningRulesRequest request,
+        CancellationToken ct) =>
+        Ok(await planningRules.UpdateMyRulesAsync(request, ct));
+
+    [HttpPost("me/planning-rules/compile")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<CompileTenantPlanningRulesResultDto>> CompileMyPlanningRules(CancellationToken ct) =>
+        Ok(await planningRules.CompileMyRulesAsync(ct));
+
+    [HttpGet("me/delivery-settings")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TenantDeliverySettingsDto>> GetMyDeliverySettings(CancellationToken ct) =>
+        Ok(await deliverySettings.GetMySettingsAsync(ct));
+
+    [HttpPut("me/delivery-settings")]
+    [Tags("Tenant — Settings")]
+    public async Task<ActionResult<TenantDeliverySettingsDto>> UpdateMyDeliverySettings(
+        [FromBody] UpdateTenantDeliverySettingsRequest request,
+        CancellationToken ct) =>
+        Ok(await deliverySettings.UpdateMySettingsAsync(request, ct));
 
     [HttpGet("me/users")]
     [Tags("Tenant — Settings")]

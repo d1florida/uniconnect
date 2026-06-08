@@ -154,11 +154,11 @@ public class DepotDirectory(
 
     private async Task ApplyGeocodeAsync(Depot depot, CancellationToken ct, bool forceRefresh = false)
     {
-        var point = await geocoding.GeocodeAsync(depot.Address, ct, forceRefresh);
-        if (point.HasValue)
+        var geocoded = await geocoding.GeocodeAsync(depot.Address, ct, forceRefresh, tenantId: depot.TenantId);
+        if (geocoded.HasValue)
         {
-            depot.Latitude = point.Value.Latitude;
-            depot.Longitude = point.Value.Longitude;
+            depot.Latitude = geocoded.Value.Latitude;
+            depot.Longitude = geocoded.Value.Longitude;
         }
     }
 

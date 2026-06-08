@@ -1,13 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../../api/client';
-import type { DriverDto, TenantUserDto } from '../../../api/types';
+import type { DriverDto, DriverWorkPatternDayDto, TenantUserDto } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { ErrorAlert } from '../../../components/ErrorAlert';
 import { Loading } from '../../../components/Loading';
 import { hasModule } from '../../../utils/fleetModules';
+import { formatWorkMinutes } from '../deliveryLabels';
 
-const emptyForm = () => ({ displayName: '', userId: '' });
+const DEFAULT_SHIFT_START = '07:00';
+const DEFAULT_SHIFT_END = '17:00';
+const DEFAULT_LUNCH_MINUTES = 30;
+const DEFAULT_BREAK_MINUTES = 15;
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const emptyForm = () => ({
+  displayName: '',
+  userId: '',
+  shiftStartTime: DEFAULT_SHIFT_START,
+  shiftEndTime: DEFAULT_SHIFT_END,
+  lunchMinutes: String(DEFAULT_LUNCH_MINUTES),
+  breakMinutes: String(DEFAULT_BREAK_MINUTES),
+  maxRouteMinutes: '',
+  returnByTime: '',
+});
 
 export function DeliveryDriversPage() {
   const { fleetId: fleetIdParam } = useParams<{ fleetId: string }>();
@@ -26,6 +43,9 @@ export function DeliveryDriversPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm());
   const [editActive, setEditActive] = useState(true);
+  const [scheduleDriverId, setScheduleDriverId] = useState<string | null>(null);
+  const [workPattern, setWorkPattern] = useState<DriverWorkPatternDayDto[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
 
   const load = () => {
     if (!fleetId) return Promise.resolve();
@@ -59,6 +79,12 @@ export function DeliveryDriversPage() {
       await api.post<DriverDto>(`/api/delivery/tenants/${fleetId}/drivers`, {
         displayName: createForm.displayName.trim(),
         userId: createForm.userId || null,
+        shiftStartTime: createForm.shiftStartTime,
+        shiftEndTime: createForm.shiftEndTime,
+        lunchMinutes: Number(createForm.lunchMinutes) || 0,
+        breakMinutes: Number(createForm.breakMinutes) || 0,
+        maxRouteMinutes: createForm.maxRouteMinutes ? Number(createForm.maxRouteMinutes) : null,
+        returnByTime: createForm.returnByTime.trim() || null,
       });
       setShowForm(false);
       setCreateForm(emptyForm());
@@ -73,7 +99,16 @@ export function DeliveryDriversPage() {
 
   const startEdit = (driver: DriverDto) => {
     setEditingId(driver.id);
-    setEditForm({ displayName: driver.displayName, userId: driver.userId ?? '' });
+    setEditForm({
+      displayName: driver.displayName,
+      userId: driver.userId ?? '',
+      shiftStartTime: driver.shiftStartTime,
+      shiftEndTime: driver.shiftEndTime,
+      lunchMinutes: String(driver.lunchMinutes),
+      breakMinutes: String(driver.breakMinutes),
+      maxRouteMinutes: driver.maxRouteMinutes != null ? String(driver.maxRouteMinutes) : '',
+      returnByTime: driver.returnByTime ?? '',
+    });
     setEditActive(driver.isActive);
     setError('');
   };
@@ -81,6 +116,63 @@ export function DeliveryDriversPage() {
   const cancelEdit = () => {
     setEditingId(null);
     setEditForm(emptyForm());
+  };
+
+  const openSchedule = async (driverId: string) => {
+    if (!fleetId) return;
+    setScheduleDriverId(driverId);
+    setScheduleLoading(true);
+    setError('');
+    try {
+      const pattern = await api.get<DriverWorkPatternDayDto[]>(
+        `/api/delivery/tenants/${fleetId}/drivers/${driverId}/work-pattern`,
+      );
+      setWorkPattern(pattern.sort((a, b) => a.dayOfWeek - b.dayOfWeek));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load weekly schedule');
+      setScheduleDriverId(null);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  const closeSchedule = () => {
+    setScheduleDriverId(null);
+    setWorkPattern([]);
+  };
+
+  const updatePatternDay = (dayOfWeek: number, patch: Partial<DriverWorkPatternDayDto>) => {
+    setWorkPattern((prev) =>
+      prev.map((day) => (day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day)),
+    );
+  };
+
+  const saveSchedule = async () => {
+    if (!fleetId || !scheduleDriverId) return;
+    setSaving(true);
+    setError('');
+    setSavedMessage('');
+    try {
+      await api.put<DriverWorkPatternDayDto[]>(
+        `/api/delivery/tenants/${fleetId}/drivers/${scheduleDriverId}/work-pattern`,
+        workPattern.map((day) => ({
+          dayOfWeek: day.dayOfWeek,
+          isWorkingDay: day.isWorkingDay,
+          shiftStartTime: day.shiftStartTime,
+          shiftEndTime: day.shiftEndTime,
+          lunchMinutes: day.lunchMinutes,
+          breakMinutes: day.breakMinutes,
+          maxRouteMinutes: day.maxRouteMinutes ?? null,
+          returnByTime: day.returnByTime ?? null,
+        })),
+      );
+      setSavedMessage('Weekly schedule saved.');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save weekly schedule');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveEdit = async (driverId: string) => {
@@ -93,6 +185,12 @@ export function DeliveryDriversPage() {
         displayName: editForm.displayName.trim(),
         userId: editForm.userId || null,
         isActive: editActive,
+        shiftStartTime: editForm.shiftStartTime,
+        shiftEndTime: editForm.shiftEndTime,
+        lunchMinutes: Number(editForm.lunchMinutes) || 0,
+        breakMinutes: Number(editForm.breakMinutes) || 0,
+        maxRouteMinutes: editForm.maxRouteMinutes ? Number(editForm.maxRouteMinutes) : null,
+        returnByTime: editForm.returnByTime.trim() || null,
       });
       setEditingId(null);
       setSavedMessage('Driver updated.');
@@ -142,13 +240,15 @@ export function DeliveryDriversPage() {
       <div className="page-header">
         <h2>Drivers</h2>
         <p>
-          Delivery drivers for assignments and insights
+          Delivery drivers for assignments, route planning, and insights. Weekly schedules resolve on read for each plan date.
           {fleetId && (
             <>
               {' '}
               · <Link to={`/delivery/fleets/${fleetId}/orders`}>Orders</Link>
               {' · '}
               <Link to={`/delivery/fleets/${fleetId}/routes`}>Routes</Link>
+              {' · '}
+              <Link to={`/delivery/fleets/${fleetId}/driver-calendar`}>Calendar</Link>
             </>
           )}
         </p>
@@ -196,6 +296,61 @@ export function DeliveryDriversPage() {
               {saving ? 'Saving…' : 'Add driver'}
             </button>
           </div>
+          <div className="form-row" style={{ marginTop: '0.75rem' }}>
+            <label>
+              Shift start
+              <input
+                type="time"
+                value={createForm.shiftStartTime}
+                onChange={(e) => setCreateForm({ ...createForm, shiftStartTime: e.target.value })}
+              />
+            </label>
+            <label>
+              Shift end
+              <input
+                type="time"
+                value={createForm.shiftEndTime}
+                onChange={(e) => setCreateForm({ ...createForm, shiftEndTime: e.target.value })}
+              />
+            </label>
+            <label>
+              Lunch (min)
+              <input
+                type="number"
+                min={0}
+                value={createForm.lunchMinutes}
+                onChange={(e) => setCreateForm({ ...createForm, lunchMinutes: e.target.value })}
+              />
+            </label>
+            <label>
+              Breaks (min)
+              <input
+                type="number"
+                min={0}
+                value={createForm.breakMinutes}
+                onChange={(e) => setCreateForm({ ...createForm, breakMinutes: e.target.value })}
+              />
+            </label>
+            <label>
+              Max route (min)
+              <input
+                type="number"
+                min={1}
+                placeholder="optional"
+                value={createForm.maxRouteMinutes}
+                onChange={(e) => setCreateForm({ ...createForm, maxRouteMinutes: e.target.value })}
+              />
+            </label>
+            <label>
+              Return by
+              <input
+                type="time"
+                value={createForm.returnByTime}
+                onChange={(e) => setCreateForm({ ...createForm, returnByTime: e.target.value })}
+              />
+            </label>
+          </div>
+          <p className="muted">Default Mon–Fri schedule is created automatically. Use Weekly schedule after adding to customize part-time days.</p>
           <p className="muted">Optionally link a tenant user account for sign-in identity. The driver name can differ from the user display name.</p>
         </div>
       )}
@@ -204,6 +359,9 @@ export function DeliveryDriversPage() {
         <thead>
           <tr>
             <th>Name</th>
+            <th>Shift</th>
+            <th>Lunch / breaks</th>
+            <th>Available</th>
             <th>Linked user</th>
             <th>Status</th>
             <th>Added</th>
@@ -218,6 +376,52 @@ export function DeliveryDriversPage() {
                   <input
                     value={editForm.displayName}
                     onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="time"
+                    value={editForm.shiftStartTime}
+                    onChange={(e) => setEditForm({ ...editForm, shiftStartTime: e.target.value })}
+                  />
+                  {' – '}
+                  <input
+                    type="time"
+                    value={editForm.shiftEndTime}
+                    onChange={(e) => setEditForm({ ...editForm, shiftEndTime: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min={0}
+                    style={{ width: '4rem' }}
+                    value={editForm.lunchMinutes}
+                    onChange={(e) => setEditForm({ ...editForm, lunchMinutes: e.target.value })}
+                  />
+                  {' / '}
+                  <input
+                    type="number"
+                    min={0}
+                    style={{ width: '4rem' }}
+                    value={editForm.breakMinutes}
+                    onChange={(e) => setEditForm({ ...editForm, breakMinutes: e.target.value })}
+                  />
+                  {' min'}
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="max min"
+                    style={{ width: '5rem' }}
+                    value={editForm.maxRouteMinutes}
+                    onChange={(e) => setEditForm({ ...editForm, maxRouteMinutes: e.target.value })}
+                  />
+                  <input
+                    type="time"
+                    value={editForm.returnByTime}
+                    onChange={(e) => setEditForm({ ...editForm, returnByTime: e.target.value })}
                   />
                 </td>
                 <td>
@@ -257,6 +461,13 @@ export function DeliveryDriversPage() {
             ) : (
               <tr key={d.id}>
                 <td>{d.displayName}</td>
+                <td>{d.shiftStartTime}–{d.shiftEndTime}</td>
+                <td>{d.lunchMinutes} / {d.breakMinutes} min</td>
+                <td>
+                  {formatWorkMinutes(d.availableWorkMinutes)}
+                  {d.maxRouteMinutes != null && <> · cap {formatWorkMinutes(d.maxRouteMinutes)}</>}
+                  {d.returnByTime && <> · back {d.returnByTime}</>}
+                </td>
                 <td>{d.linkedUserName ?? '—'}</td>
                 <td>
                   <span className={`badge ${d.isActive ? 'badge-conv' : 'badge-muted'}`}>
@@ -268,6 +479,9 @@ export function DeliveryDriversPage() {
                   <td>
                     <button type="button" className="secondary" onClick={() => startEdit(d)}>
                       Edit
+                    </button>{' '}
+                    <button type="button" className="secondary" onClick={() => void openSchedule(d.id)}>
+                      Schedule
                     </button>
                   </td>
                 )}
@@ -279,6 +493,122 @@ export function DeliveryDriversPage() {
 
       {drivers.length === 0 && !showForm && (
         <p className="muted">No drivers yet.{isAdmin ? ' Add your first driver above.' : ''}</p>
+      )}
+
+      {scheduleDriverId && (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <h3 style={{ marginTop: 0 }}>
+            Weekly schedule — {drivers.find((d) => d.id === scheduleDriverId)?.displayName ?? 'Driver'}
+          </h3>
+          <p className="muted">
+            Uncheck a day for time off. Route planning uses this pattern for the plan date (resolve on read).
+          </p>
+          {scheduleLoading ? (
+            <Loading />
+          ) : (
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Working</th>
+                    <th>Shift</th>
+                    <th>Lunch</th>
+                    <th>Breaks</th>
+                    <th>Max route</th>
+                    <th>Return by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workPattern.map((day) => (
+                    <tr key={day.dayOfWeek}>
+                      <td>{DAY_LABELS[day.dayOfWeek]}</td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={day.isWorkingDay}
+                          onChange={(e) => updatePatternDay(day.dayOfWeek, { isWorkingDay: e.target.checked })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="time"
+                          disabled={!day.isWorkingDay}
+                          value={day.shiftStartTime}
+                          onChange={(e) => updatePatternDay(day.dayOfWeek, { shiftStartTime: e.target.value })}
+                        />
+                        {' – '}
+                        <input
+                          type="time"
+                          disabled={!day.isWorkingDay}
+                          value={day.shiftEndTime}
+                          onChange={(e) => updatePatternDay(day.dayOfWeek, { shiftEndTime: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          disabled={!day.isWorkingDay}
+                          style={{ width: '4rem' }}
+                          value={day.lunchMinutes}
+                          onChange={(e) =>
+                            updatePatternDay(day.dayOfWeek, { lunchMinutes: Number(e.target.value) || 0 })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          disabled={!day.isWorkingDay}
+                          style={{ width: '4rem' }}
+                          value={day.breakMinutes}
+                          onChange={(e) =>
+                            updatePatternDay(day.dayOfWeek, { breakMinutes: Number(e.target.value) || 0 })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={1}
+                          disabled={!day.isWorkingDay}
+                          placeholder="—"
+                          style={{ width: '5rem' }}
+                          value={day.maxRouteMinutes ?? ''}
+                          onChange={(e) =>
+                            updatePatternDay(day.dayOfWeek, {
+                              maxRouteMinutes: e.target.value ? Number(e.target.value) : undefined,
+                            })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="time"
+                          disabled={!day.isWorkingDay}
+                          value={day.returnByTime ?? ''}
+                          onChange={(e) =>
+                            updatePatternDay(day.dayOfWeek, { returnByTime: e.target.value || undefined })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="form-row" style={{ marginTop: '0.75rem' }}>
+                <button type="button" onClick={() => void saveSchedule()} disabled={saving || workPattern.length !== 7}>
+                  {saving ? 'Saving…' : 'Save weekly schedule'}
+                </button>
+                <button type="button" className="secondary" onClick={closeSchedule}>
+                  Close
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

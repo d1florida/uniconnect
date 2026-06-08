@@ -26,7 +26,7 @@ builder.Services.AddCors(options =>
             .AllowCredentials());
 });
 
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
 

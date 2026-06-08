@@ -10,13 +10,26 @@ public record PlannedStopDto(
     string? RecipientName,
     decimal? Latitude = null,
     decimal? Longitude = null,
-    string? ParcelDescription = null);
+    string? ParcelDescription = null,
+    string? DeliveryOpenStart = null,
+    string? DeliveryOpenEnd = null,
+    string? NoDeliveryStart = null,
+    string? NoDeliveryEnd = null,
+    string? EstimatedArrival = null,
+    IReadOnlyList<string>? WindowWarnings = null);
 
 public record PlannedRouteProposalDto(
     Guid? VehicleId,
     string? VehicleLabel,
     int EstimatedMinutes,
-    IReadOnlyList<PlannedStopDto> Stops);
+    IReadOnlyList<PlannedStopDto> Stops,
+    Guid? DriverId = null,
+    string? DriverLabel = null,
+    int? ShiftAvailableMinutes = null,
+    string? ShiftWindow = null,
+    string? EstimatedRouteStart = null,
+    IReadOnlyList<string>? Warnings = null,
+    int WindowViolationCount = 0);
 
 public record RoutePlanRunDto(
     Guid Id,
@@ -42,9 +55,11 @@ public record PlanRoutesRequest(
     DateOnly ScheduledDate,
     IReadOnlyList<Guid>? OrderIds,
     IReadOnlyList<Guid>? VehicleIds,
+    IReadOnlyList<Guid>? DriverIds = null,
     int MaxStopsPerRoute = 25,
     string? DepotAddress = null,
-    Guid? DepotId = null);
+    Guid? DepotId = null,
+    Guid? FixedRouteTemplateId = null);
 
 public record AcceptPlanRequest(
     IReadOnlyList<Guid>? ProposalVehicleIds);
@@ -73,5 +88,19 @@ public record PlanReadinessDto(
     int PlannableOrderCount,
     int VehicleCount,
     int ActiveVehicleCount,
+    int DriverCount,
+    int ActiveDriverCount,
     bool CanPlan,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    int WindowedOrderCount = 0,
+    int HeldOrderCount = 0,
+    Guid? FixedRouteTemplateId = null,
+    int FixedRouteDueOrderCount = 0,
+    int WorkingDriverCount = 0,
+    int DriversOffCount = 0,
+    DateOnly? ScheduledDate = null);
+
+public record PlanRunExplanationDto(
+    Guid PlanRunId,
+    string Explanation,
+    bool UsedAi);

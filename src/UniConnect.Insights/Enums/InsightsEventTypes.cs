@@ -17,6 +17,7 @@ public static class DeliveryEventTypes
     public const string RouteAssigned = "delivery.route.assigned";
     public const string RouteStarted = "delivery.route.started";
     public const string RouteCompleted = "delivery.route.completed";
+    public const string RouteCancelled = "delivery.route.cancelled";
     public const string StopCompleted = "delivery.stop.completed";
 }
 

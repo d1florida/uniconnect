@@ -4,6 +4,7 @@ using UniConnect.Application;
 using UniConnect.Application.Interfaces;
 using UniConnect.Infrastructure.Data;
 using UniConnect.Infrastructure.Identity;
+using UniConnect.Infrastructure.Services.Insights;
 using UniConnect.Tenant;
 using UniConnect.Tenant.DTOs;
 using UniConnect.Tenant.Enums;
@@ -25,7 +26,16 @@ public class TenantUserService(
             .OrderBy(u => u.Email)
             .ToListAsync(ct);
 
-        return users.Select(u => ToDto(u, tenant.Modules)).ToList();
+        var userIds = users.Select(u => u.Id).ToList();
+        var linkedDrivers = await db.Drivers.AsNoTracking()
+            .Where(d => d.TenantId == tenant.Id && d.UserId != null && userIds.Contains(d.UserId.Value))
+            .ToDictionaryAsync(d => d.UserId!.Value, d => d, ct);
+
+        return users.Select(u =>
+        {
+            linkedDrivers.TryGetValue(u.Id, out var driver);
+            return ToDto(u, tenant.Modules, driver?.Id, driver?.DisplayName);
+        }).ToList();
     }
 
     public async Task<TenantUserDto> CreateMyUserAsync(CreateTenantUserRequest request, CancellationToken ct = default)
@@ -43,8 +53,9 @@ public class TenantUserService(
             throw new ArgumentException("Password is required.");
         if (await userManager.FindByEmailAsync(email) is not null)
             throw new ArgumentException("A user with this email already exists.");
-
-        var moduleAccess = ValidateModuleAccess(request.ModuleAccess, tenant.Modules);
+        var moduleAccess = request.Role == TenantRole.Driver
+            ? DriverUserProvisioning.DriverModuleAccess(tenant.Modules)
+            : ValidateModuleAccess(request.ModuleAccess, tenant.Modules);
 
         var user = new ApplicationUser
         {
@@ -63,7 +74,16 @@ public class TenantUserService(
         if (!result.Succeeded)
             throw new ArgumentException(FormatIdentityErrors(result.Errors));
 
-        return ToDto(user, tenant.Modules);
+        Guid? linkedDriverId = null;
+        string? linkedDriverName = null;
+        if (request.Role == TenantRole.Driver)
+        {
+            var driver = await DriverUserProvisioning.EnsureDriverForUserAsync(db, tenant.Id, user, ct);
+            linkedDriverId = driver.Id;
+            linkedDriverName = driver.DisplayName;
+        }
+
+        return ToDto(user, tenant.Modules, linkedDriverId, linkedDriverName);
     }
 
     public async Task<TenantUserDto> UpdateMyUserAsync(Guid userId, UpdateTenantUserRequest request, CancellationToken ct = default)
@@ -80,10 +100,44 @@ public class TenantUserService(
             user.DisplayName = displayName;
         }
 
-        if (request.Role.HasValue)
-            user.TenantRole = request.Role.Value;
+        if (request.Email is not null)
+        {
+            var newEmail = request.Email.Trim();
+            if (string.IsNullOrWhiteSpace(newEmail))
+                throw new ArgumentException("Email cannot be empty.");
 
-        if (request.ModuleAccess is not null)
+            if (!string.Equals(user.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var existing = await userManager.FindByEmailAsync(newEmail);
+                if (existing is not null && existing.Id != user.Id)
+                    throw new ArgumentException("A user with this email already exists.");
+
+                user.Email = newEmail;
+                user.UserName = newEmail;
+                user.NormalizedEmail = userManager.NormalizeEmail(newEmail);
+                user.NormalizedUserName = userManager.NormalizeName(newEmail);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var resetResult = await userManager.ResetPasswordAsync(user, token, request.NewPassword.Trim());
+            if (!resetResult.Succeeded)
+                throw new ArgumentException(FormatIdentityErrors(resetResult.Errors));
+        }
+
+        var previousRole = user.TenantRole;
+        if (request.Role.HasValue)
+        {
+            if (request.Role.Value == TenantRole.Admin && user.TenantRole == TenantRole.Driver)
+                throw new ArgumentException("Promote the user to Operator before granting admin access.");
+            user.TenantRole = request.Role.Value;
+        }
+
+        if (user.TenantRole == TenantRole.Driver)
+            user.ModuleAccess = DriverUserProvisioning.DriverModuleAccess(tenant.Modules);
+        else if (request.ModuleAccess is not null)
             user.ModuleAccess = ValidateModuleAccess(request.ModuleAccess, tenant.Modules);
 
         if (request.IsActive.HasValue)
@@ -103,7 +157,15 @@ public class TenantUserService(
         if (!updateResult.Succeeded)
             throw new ArgumentException(FormatIdentityErrors(updateResult.Errors));
 
-        return ToDto(user, tenant.Modules);
+        if (user.TenantRole == TenantRole.Driver)
+            await DriverUserProvisioning.EnsureDriverForUserAsync(db, tenant.Id, user, ct);
+        else if (previousRole == TenantRole.Driver)
+            await DriverUserProvisioning.UnlinkUserAsync(db, user.Id, ct);
+
+        var linkedDriver = await db.Drivers.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.UserId == user.Id, ct);
+
+        return ToDto(user, tenant.Modules, linkedDriver?.Id, linkedDriver?.DisplayName);
     }
 
     public async Task DeleteMyUserAsync(Guid userId, CancellationToken ct = default)
@@ -116,6 +178,7 @@ public class TenantUserService(
             ?? throw new InvalidOperationException("User not found.");
 
         await EnsureRemainingAdminAsync(tenant.Id, userId, ct);
+        await DriverUserProvisioning.UnlinkUserAsync(db, user.Id, ct);
 
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded)
@@ -158,7 +221,11 @@ public class TenantUserService(
             throw new InvalidOperationException("The tenant must have at least one active administrator.");
     }
 
-    private static TenantUserDto ToDto(ApplicationUser user, ProductModule tenantModules)
+    private static TenantUserDto ToDto(
+        ApplicationUser user,
+        ProductModule tenantModules,
+        Guid? linkedDriverId = null,
+        string? linkedDriverName = null)
     {
         var effective = ProductModuleHelper.EffectiveModules(user.ModuleAccess, tenantModules);
         return new TenantUserDto(
@@ -167,7 +234,9 @@ public class TenantUserService(
             user.DisplayName,
             user.TenantRole,
             ProductModuleHelper.Expand(effective),
-            user.IsActive);
+            user.IsActive,
+            linkedDriverId,
+            linkedDriverName);
     }
 
     private static string FormatIdentityErrors(IEnumerable<IdentityError> errors) =>

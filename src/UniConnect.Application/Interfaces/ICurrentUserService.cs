@@ -14,10 +14,14 @@ public interface ICurrentUserService
     Guid? ApiKeyId { get; }
     TenantRole? TenantRole { get; }
     bool IsTenantAdmin { get; }
+    bool IsDriver { get; }
+    Guid? DriverId { get; }
     bool HasModule(ProductModule module);
     void EnsureModule(ProductModule module);
     void EnsureModules(params ProductModule[] modules);
     void EnsureTenantAccess(Guid tenantId);
     void EnsureVehicleTenantAccess(Guid vehicleTenantId);
     void EnsureTenantAdmin();
+    void EnsureDispatcher();
+    void EnsureDriverSelf(Guid driverId);
 }

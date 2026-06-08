@@ -7,6 +7,7 @@ using UniConnect.Delivery.Entities;
 using UniConnect.Delivery.Enums;
 using UniConnect.Delivery.Interfaces;
 using UniConnect.Insights.DTOs;
+using UniConnect.Insights.Entities;
 using UniConnect.Insights.Enums;
 using UniConnect.Insights.Interfaces;
 using UniConnect.Tenant;
@@ -31,6 +32,7 @@ public class DeliveryService(
     ICurrentUserService currentUser,
     IOperationalEventRecorder events,
     ICustomerDirectory customers,
+    IFixedRouteDirectory fixedRoutes,
     OrderGeocodingHelper orderGeocoding,
     IDepotDirectory depots,
     ITravelTimeMatrix travelTimeMatrix,
@@ -45,6 +47,7 @@ public class DeliveryService(
 
     public async Task<DeliveryDashboardDto> GetDashboardAsync(CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var tenantIds = await ScopedDeliveryTenantIdsAsync(ct);
         var orders = await ScopedOrders()
             .Where(o => tenantIds.Contains(o.TenantId))
@@ -64,14 +67,15 @@ public class DeliveryService(
             .ToListAsync(ct);
 
         return new DeliveryDashboardDto(
-            orders.Count(o => o.Status == DeliveryOrderStatus.Created),
+            orders.Count(o => o.Status == DeliveryOrderStatus.Created && !o.FixedRouteTemplateId.HasValue),
             orders.Count(o => o.Status == DeliveryOrderStatus.InTransit),
             orders.Count,
             assignments.Count(a => activeAssignmentOrderIds.Contains(a.DeliveryOrderId) && a.AutomationMode == AutomationMode.Autonomous),
             assignments.Count(a => activeAssignmentOrderIds.Contains(a.DeliveryOrderId) && a.AutomationMode == AutomationMode.Conventional),
             routes.Count(r => r.Status == DeliveryRouteStatus.InProgress),
             routes.Count(r => r.Status == DeliveryRouteStatus.Planned),
-            orders.Count(o => o.Status == DeliveryOrderStatus.Created),
+            orders.Count(o => o.Status == DeliveryOrderStatus.Created && !o.FixedRouteTemplateId.HasValue),
+            orders.Count(o => o.Status == DeliveryOrderStatus.Created && o.FixedRouteTemplateId.HasValue),
             routes.Count(r => r.Status == DeliveryRouteStatus.Draft),
             routes.Count(r =>
                 (r.Status == DeliveryRouteStatus.Draft || r.Status == DeliveryRouteStatus.Planned)
@@ -81,6 +85,7 @@ public class DeliveryService(
 
     public async Task<IReadOnlyList<DeliveryOrderDto>> GetOrdersAsync(Guid tenantId, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         currentUser.EnsureTenantAccess(tenantId);
         var orders = await ScopedOrders()
             .AsNoTracking()
@@ -89,23 +94,17 @@ public class DeliveryService(
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync(ct);
 
-        var backfilled = await BackfillMissingCoordinatesAsync(orders, ct);
-        if (backfilled)
-        {
-            orders = await ScopedOrders()
-                .AsNoTracking()
-                .Where(o => o.TenantId == tenantId)
-                .Include(o => o.Assignment)
-                .OrderByDescending(o => o.CreatedAt)
-                .ToListAsync(ct);
-        }
-
         var vehicleIds = orders.Where(o => o.Assignment != null).Select(o => o.Assignment!.VehicleId).Distinct().ToList();
         var driverIds = orders.Where(o => o.Assignment?.DriverId != null).Select(o => o.Assignment!.DriverId!.Value).Distinct().ToList();
         var vehicleInfo = await VehicleDisplayInfoAsync(vehicleIds, ct);
         var driverNames = await DriverNamesAsync(driverIds, ct);
         var geocodeSources = await orderGeocoding.GetCachedSourcesAsync(
-            orders.SelectMany(o => new[] { o.PickupAddress, o.DeliveryAddress }), ct);
+            orders.SelectMany(o => new[] { o.PickupAddress, o.DeliveryAddress }),
+            tenantId,
+            ct);
+        var templateNames = await FixedRouteTemplateNamesAsync(
+            orders.Where(o => o.FixedRouteTemplateId.HasValue).Select(o => o.FixedRouteTemplateId!.Value).Distinct(),
+            ct);
 
         return orders.Select(o =>
         {
@@ -117,21 +116,23 @@ public class DeliveryService(
                 info?.VehicleNumber,
                 info?.LicensePlate,
                 o.Assignment?.DriverId is Guid did ? driverNames.GetValueOrDefault(did) : null,
-                geocodeSources);
+                geocodeSources,
+                o.FixedRouteTemplateId is Guid tid ? templateNames.GetValueOrDefault(tid) : null);
         }).ToList();
     }
 
     public async Task<DeliveryOrderDto?> GetOrderAsync(Guid orderId, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var order = await ScopedOrders()
             .AsNoTracking()
             .Include(o => o.Assignment)
             .FirstOrDefaultAsync(o => o.Id == orderId, ct);
         if (order is null) return null;
 
-        var backfilled = await BackfillMissingCoordinatesAsync([order], ct);
-        if (backfilled)
+        if (NeedsGeocode(order) || await orderGeocoding.HasStaleOrderGeocodeAsync(order, ct))
         {
+            await BackfillMissingCoordinatesOnlyAsync([order.Id], ct);
             order = await ScopedOrders()
                 .AsNoTracking()
                 .Include(o => o.Assignment)
@@ -153,15 +154,42 @@ public class DeliveryService(
                     .FirstOrDefaultAsync(ct);
         }
 
-        var geocodeSources = await orderGeocoding.GetCachedSourcesAsync([order.PickupAddress, order.DeliveryAddress], ct);
-        return MapOrder(order, vehicleNumber, licensePlate, driverName, geocodeSources);
+        var geocodeSources = await orderGeocoding.GetCachedSourcesAsync(
+            [order.PickupAddress, order.DeliveryAddress],
+            order.TenantId,
+            ct);
+        string? templateName = null;
+        if (order.FixedRouteTemplateId.HasValue)
+        {
+            var names = await FixedRouteTemplateNamesAsync([order.FixedRouteTemplateId.Value], ct);
+            templateName = names.GetValueOrDefault(order.FixedRouteTemplateId.Value);
+        }
+
+        return MapOrder(order, vehicleNumber, licensePlate, driverName, geocodeSources, templateName);
     }
 
     public async Task<DeliveryOrderDto> CreateOrderAsync(Guid tenantId, CreateDeliveryOrderRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         currentUser.EnsureTenantAccess(tenantId);
 
-        var customer = await customers.GetOrCreateAsync(tenantId, request.RecipientName, request.RecipientPhone, ct);
+        Customer customer;
+        if (request.CustomerId.HasValue)
+        {
+            customer = await db.Customers.FirstOrDefaultAsync(c =>
+                c.Id == request.CustomerId.Value && c.TenantId == tenantId && c.IsActive, ct)
+                ?? throw new ArgumentException("Customer not found.");
+        }
+        else
+        {
+            customer = await customers.GetOrCreateAsync(
+                tenantId,
+                request.RecipientName,
+                request.RecipientPhone,
+                request.DeliveryAddress,
+                ct);
+        }
+        var externalRef = ResolveExternalRef(request.ExternalRef, customer.ExternalRef);
         var order = new DeliveryOrder
         {
             Id = Guid.NewGuid(),
@@ -172,12 +200,18 @@ public class DeliveryService(
             RecipientName = request.RecipientName,
             RecipientPhone = request.RecipientPhone,
             ParcelDescription = request.ParcelDescription,
+            ExternalRef = externalRef,
             CustomerId = customer.Id,
             CreatedAt = DateTime.UtcNow
         };
         db.DeliveryOrders.Add(order);
         await db.SaveChangesAsync(ct);
+        await customers.SyncDeliveryAddressAsync(tenantId, customer.Id, request.DeliveryAddress, ct);
+        if (externalRef is not null)
+            await customers.SyncExternalRefAsync(tenantId, customer.Id, externalRef, ct);
         await orderGeocoding.EnsureOrderCoordinatesAsync(order, ct);
+        await fixedRoutes.ApplyHoldToOrderAsync(order, customer.Id, ct);
+        await db.SaveChangesAsync(ct);
 
         await RecordDeliveryEventAsync(
             tenantId,
@@ -198,6 +232,7 @@ public class DeliveryService(
 
     public async Task<DeliveryOrderDto> UpdateOrderAsync(Guid orderId, UpdateDeliveryOrderRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var order = await ScopedOrders()
             .Include(o => o.Assignment)
             .FirstOrDefaultAsync(o => o.Id == orderId, ct)
@@ -206,48 +241,56 @@ public class DeliveryService(
         if (!CanEditOrder(order.Status))
             throw new InvalidOperationException("This order can no longer be edited.");
 
-        var pickupAddress = request.PickupAddress.Trim();
-        var deliveryAddress = request.DeliveryAddress.Trim();
-        var recipientName = request.RecipientName.Trim();
-        var recipientPhone = request.RecipientPhone.Trim();
-        var parcelDescription = request.ParcelDescription.Trim();
+        var pickupAddress = (request.PickupAddress ?? string.Empty).Trim();
+        var deliveryAddress = (request.DeliveryAddress ?? string.Empty).Trim();
+        var recipientName = (request.RecipientName ?? string.Empty).Trim();
+        var recipientPhone = (request.RecipientPhone ?? string.Empty).Trim();
+        var parcelDescription = (request.ParcelDescription ?? string.Empty).Trim();
+        var externalRef = string.IsNullOrWhiteSpace(request.ExternalRef) ? null : request.ExternalRef.Trim();
 
         if (string.IsNullOrWhiteSpace(deliveryAddress))
             throw new ArgumentException("Delivery address is required.");
         if (string.IsNullOrWhiteSpace(recipientName))
             throw new ArgumentException("Recipient name is required.");
 
-        var pickupChanged = !string.Equals(order.PickupAddress, pickupAddress, StringComparison.Ordinal);
-        var deliveryChanged = !string.Equals(order.DeliveryAddress, deliveryAddress, StringComparison.Ordinal);
+        var pickupChanged = !AddressesEqual(order.PickupAddress, pickupAddress);
+        var deliveryChanged = !AddressesEqual(order.DeliveryAddress, deliveryAddress);
         var recipientChanged = !string.Equals(order.RecipientName, recipientName, StringComparison.Ordinal)
             || !string.Equals(order.RecipientPhone, recipientPhone, StringComparison.Ordinal);
         var parcelChanged = !string.Equals(order.ParcelDescription, parcelDescription, StringComparison.Ordinal);
+        var externalRefChanged = !string.Equals(order.ExternalRef, externalRef, StringComparison.Ordinal);
 
         order.PickupAddress = pickupAddress;
         order.DeliveryAddress = deliveryAddress;
         order.RecipientName = recipientName;
         order.RecipientPhone = recipientPhone;
         order.ParcelDescription = parcelDescription;
+        order.ExternalRef = externalRef;
 
-        if (recipientChanged)
-        {
-            var customer = await customers.GetOrCreateAsync(order.TenantId, recipientName, recipientPhone, ct);
-            order.CustomerId = customer.Id;
-        }
+        var customer = await customers.GetOrCreateAsync(order.TenantId, recipientName, recipientPhone, deliveryAddress, ct);
+        order.CustomerId = customer.Id;
+
+        if (deliveryChanged)
+            await customers.SyncDeliveryAddressAsync(order.TenantId, customer.Id, deliveryAddress, ct);
+
+        if (externalRefChanged)
+            await customers.SyncExternalRefAsync(order.TenantId, customer.Id, externalRef, ct);
 
         if (pickupChanged)
         {
             order.PickupLatitude = null;
             order.PickupLongitude = null;
+            order.PickupFormattedAddress = null;
         }
 
         if (deliveryChanged)
         {
             order.DeliveryLatitude = null;
             order.DeliveryLongitude = null;
+            order.DeliveryFormattedAddress = null;
         }
 
-        if (pickupChanged || deliveryChanged || recipientChanged || parcelChanged)
+        if (pickupChanged || deliveryChanged || recipientChanged || parcelChanged || externalRefChanged)
         {
             var routeStops = await db.DeliveryRouteStops
                 .Where(s => s.DeliveryOrderId == order.Id)
@@ -273,14 +316,21 @@ public class DeliveryService(
         if (pickupChanged || deliveryChanged)
             await orderGeocoding.EnsureOrderCoordinatesAsync(order, ct, upgradeDeterministic: true);
 
-        if (pickupChanged || deliveryChanged || recipientChanged)
-            await SyncOrderIntoPendingPlanProposalsAsync(order, ct);
+        try
+        {
+            if (pickupChanged || deliveryChanged || recipientChanged)
+                await SyncOrderIntoPendingPlanProposalsAsync(order, ct);
 
-        await RecordOrderEventAsync(
-            order,
-            DeliveryEventTypes.OrderStatusChanged,
-            $"Order updated for {order.RecipientName} delivering to {order.DeliveryAddress}.",
-            ct);
+            await RecordOrderEventAsync(
+                order,
+                DeliveryEventTypes.OrderStatusChanged,
+                $"Order updated for {order.RecipientName} delivering to {order.DeliveryAddress}.",
+                ct);
+        }
+        catch
+        {
+            // Insights sync / event logging must not block order updates.
+        }
 
         return (await GetOrderAsync(orderId, ct))!;
     }
@@ -322,6 +372,7 @@ public class DeliveryService(
 
     public async Task<DeliveryOrderDto> UpdateStatusAsync(Guid orderId, UpdateDeliveryStatusRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var order = await ScopedOrders()
             .FirstOrDefaultAsync(o => o.Id == orderId, ct)
             ?? throw new InvalidOperationException("Order not found.");
@@ -354,6 +405,7 @@ public class DeliveryService(
 
     public async Task<DeliveryOrderDto> AssignAsync(Guid orderId, AssignDeliveryRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var order = await ScopedOrders()
             .Include(o => o.Assignment)
             .FirstOrDefaultAsync(o => o.Id == orderId, ct)
@@ -416,6 +468,7 @@ public class DeliveryService(
 
     public async Task<IReadOnlyList<DeliveryVehicleDto>> GetVehiclesAsync(Guid tenantId, Guid? depotId = null, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         currentUser.EnsureTenantAccess(tenantId);
         var query = db.Vehicles.AsNoTracking().Where(v => v.TenantId == tenantId);
         if (depotId.HasValue)
@@ -425,7 +478,7 @@ public class DeliveryService(
         var profiles = await db.RoboTaxiProfiles.AsNoTracking()
             .Where(p => vehicles.Select(v => v.Id).Contains(p.VehicleId))
             .ToDictionaryAsync(p => p.VehicleId, ct);
-        var locs = await LocationHelper.GetLatestForVehiclesAsync(db, vehicles.Select(v => v.Id), ct);
+        var locs = await ResolveVehicleLocationsAsync(vehicles, ct);
         var depotNames = await ResolveDepotNamesAsync(vehicles, ct);
 
         return vehicles.Select(v =>
@@ -445,6 +498,7 @@ public class DeliveryService(
         AssignVehicleHomeDepotRequest request,
         CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         currentUser.EnsureTenantAccess(tenantId);
         var vehicle = await db.Vehicles.FirstOrDefaultAsync(v => v.Id == vehicleId && v.TenantId == tenantId, ct)
             ?? throw new InvalidOperationException("Vehicle not found.");
@@ -460,8 +514,89 @@ public class DeliveryService(
         vehicle.HomeDepotId = request.HomeDepotId;
         await db.SaveChangesAsync(ct);
 
+        if (request.HomeDepotId.HasValue)
+            await RecordVehicleAtHomeDepotAsync(vehicleId, request.HomeDepotId.Value, ct);
+
         var vehicles = await GetVehiclesAsync(tenantId, ct: ct);
         return vehicles.First(v => v.Id == vehicleId);
+    }
+
+    private async Task RecordVehicleAtHomeDepotAsync(Guid vehicleId, Guid depotId, CancellationToken ct)
+    {
+        var depot = await db.Depots.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == depotId, ct);
+        if (depot?.Latitude is null || depot.Longitude is null)
+            return;
+
+        db.VehicleLocations.Add(new VehicleLocation
+        {
+            Id = Guid.NewGuid(),
+            VehicleId = vehicleId,
+            Latitude = depot.Latitude.Value,
+            Longitude = depot.Longitude.Value,
+            RecordedAt = DateTime.UtcNow,
+            SpeedKph = 0,
+            Source = LocationSource.Manual
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<Dictionary<Guid, LocationDto>> ResolveVehicleLocationsAsync(
+        IReadOnlyList<Vehicle> vehicles,
+        CancellationToken ct)
+    {
+        var gpsLocs = await LocationHelper.GetLatestForVehiclesAsync(db, vehicles.Select(v => v.Id), ct);
+        if (vehicles.Count == 0)
+            return gpsLocs;
+
+        var depotIds = vehicles.Where(v => v.HomeDepotId.HasValue).Select(v => v.HomeDepotId!.Value).Distinct().ToList();
+        if (depotIds.Count == 0)
+            return gpsLocs;
+
+        var depots = await db.Depots.AsNoTracking()
+            .Where(d => depotIds.Contains(d.Id) && d.Latitude != null && d.Longitude != null)
+            .ToDictionaryAsync(d => d.Id, ct);
+
+        var vehicleIds = vehicles.Select(v => v.Id).ToList();
+        var activeVehicleIds = (await db.DeliveryAssignments.AsNoTracking()
+            .Where(a => vehicleIds.Contains(a.VehicleId))
+            .Join(
+                db.DeliveryOrders.AsNoTracking(),
+                a => a.DeliveryOrderId,
+                o => o.Id,
+                (a, o) => new { a.VehicleId, o.Status })
+            .Where(x => ActiveOrderStatuses.Contains(x.Status))
+            .Select(x => x.VehicleId)
+            .Distinct()
+            .ToListAsync(ct)).ToHashSet();
+
+        var result = new Dictionary<Guid, LocationDto>();
+        foreach (var vehicle in vehicles)
+        {
+            if (activeVehicleIds.Contains(vehicle.Id) && gpsLocs.TryGetValue(vehicle.Id, out var activeGps))
+            {
+                result[vehicle.Id] = activeGps;
+                continue;
+            }
+
+            if (vehicle.HomeDepotId.HasValue
+                && depots.TryGetValue(vehicle.HomeDepotId.Value, out var depot)
+                && depot.Latitude.HasValue && depot.Longitude.HasValue)
+            {
+                gpsLocs.TryGetValue(vehicle.Id, out var existing);
+                result[vehicle.Id] = new LocationDto(
+                    depot.Latitude.Value,
+                    depot.Longitude.Value,
+                    existing?.RecordedAt ?? DateTime.UtcNow,
+                    0);
+                continue;
+            }
+
+            if (gpsLocs.TryGetValue(vehicle.Id, out var gps))
+                result[vehicle.Id] = gps;
+        }
+
+        return result;
     }
 
     private async Task<Dictionary<Guid, string>> ResolveDepotNamesAsync(IReadOnlyList<Vehicle> vehicles, CancellationToken ct)
@@ -477,12 +612,13 @@ public class DeliveryService(
 
     public async Task<IReadOnlyList<DeliveryTrackingDto>> GetTrackingAsync(Guid tenantId, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         currentUser.EnsureTenantAccess(tenantId);
         var vehicles = await db.Vehicles.AsNoTracking().Where(v => v.TenantId == tenantId).ToListAsync(ct);
         var profiles = await db.RoboTaxiProfiles.AsNoTracking()
             .Where(p => vehicles.Select(v => v.Id).Contains(p.VehicleId))
             .ToDictionaryAsync(p => p.VehicleId, ct);
-        var locs = await LocationHelper.GetLatestForVehiclesAsync(db, vehicles.Select(v => v.Id), ct);
+        var locs = await ResolveVehicleLocationsAsync(vehicles, ct);
 
         var activeOrders = await db.DeliveryAssignments.AsNoTracking()
             .Where(a => vehicles.Select(v => v.Id).Contains(a.VehicleId))
@@ -564,6 +700,7 @@ public class DeliveryService(
 
     public async Task<DeliveryRouteDetailDto> CreateRouteAsync(Guid tenantId, CreateDeliveryRouteRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         currentUser.EnsureTenantAccess(tenantId);
         if (string.IsNullOrWhiteSpace(request.Name))
             throw new ArgumentException("Route name is required.");
@@ -571,7 +708,7 @@ public class DeliveryService(
             throw new ArgumentException("At least one stop is required.");
 
         var depotAddress = await depots.ResolveDepotAddressAsync(tenantId, request.DepotId, request.DepotAddress, ct);
-        GeoPoint? depotPoint = await orderGeocoding.GeocodeAddressAsync(depotAddress, ct);
+        GeoPoint? depotPoint = (await orderGeocoding.GeocodeAddressAsync(depotAddress, tenantId, ct))?.ToPoint();
 
         var routeId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -676,6 +813,7 @@ public class DeliveryService(
 
     public async Task<DeliveryRouteDetailDto> UpdateRouteAsync(Guid routeId, UpdateDeliveryRouteRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
 
@@ -722,6 +860,7 @@ public class DeliveryService(
                 route.CompletedAt = DateTime.UtcNow;
                 break;
             case DeliveryRouteStatus.Cancelled when route.Status is not DeliveryRouteStatus.Completed:
+                await ReleaseOrdersFromCancelledRouteAsync(route, ct);
                 break;
             default:
                 throw new InvalidOperationException($"Cannot transition route from {route.Status} to {request.Status}.");
@@ -776,12 +915,30 @@ public class DeliveryService(
                     : $"Route {route.Name} completed.",
                 ct: ct);
         }
+        else if (request.Status == DeliveryRouteStatus.Cancelled)
+        {
+            try
+            {
+                await RecordDeliveryEventAsync(
+                    route.TenantId,
+                    DeliveryEventTypes.RouteCancelled,
+                    orderId: null,
+                    routeId: route.Id,
+                    narrative: $"Route {route.Name} cancelled; orders returned to ready.",
+                    ct: ct);
+            }
+            catch
+            {
+                // Route and orders are saved; insights event is best-effort.
+            }
+        }
 
         return (await GetRouteAsync(routeId, ct))!;
     }
 
     public async Task<DeliveryRouteDetailDto> AssignRouteAsync(Guid routeId, AssignRouteRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
         await ValidateVehicleForAssignmentAsync(route.TenantId, request.VehicleId, request.AutomationMode, ct);
@@ -825,6 +982,7 @@ public class DeliveryService(
 
     public async Task SyncRouteOrderAssignmentsAsync(Guid routeId, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         await SyncRouteOrderAssignmentsAsync(route, ct, recordEvents: true);
         await db.SaveChangesAsync(ct);
@@ -832,6 +990,7 @@ public class DeliveryService(
 
     public async Task<DeliveryRouteStopDto> AddRouteStopAsync(Guid routeId, AddRouteStopRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
         if (request.StopType == DeliveryStopType.Depot)
@@ -861,6 +1020,7 @@ public class DeliveryService(
 
     public async Task<DeliveryRouteStopDto> UpdateRouteStopAsync(Guid routeId, Guid stopId, UpdateRouteStopRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
         var stop = route.Stops.FirstOrDefault(s => s.Id == stopId)
@@ -881,6 +1041,7 @@ public class DeliveryService(
 
     public async Task<DeliveryRouteDetailDto> ReorderRouteStopsAsync(Guid routeId, ReorderRouteStopsRequest request, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
 
@@ -917,6 +1078,7 @@ public class DeliveryService(
 
     public async Task DeleteRouteStopAsync(Guid routeId, Guid stopId, CancellationToken ct = default)
     {
+        currentUser.EnsureDispatcher();
         var route = await LoadRouteForUpdateAsync(routeId, ct);
         EnsureRouteEditable(route);
         var stop = route.Stops.FirstOrDefault(s => s.Id == stopId)
@@ -1048,13 +1210,77 @@ public class DeliveryService(
             && s.Status == DeliveryStopStatus.Pending
             && CountsAsOperationalStop(s, depotAddress));
 
+    private async Task ReleaseOrdersFromCancelledRouteAsync(DeliveryRoute route, CancellationToken ct)
+    {
+        foreach (var stop in route.Stops.Where(s => s.Status == DeliveryStopStatus.Pending))
+            stop.Status = DeliveryStopStatus.Skipped;
+
+        var orderIds = route.Stops
+            .Where(s => s.DeliveryOrderId.HasValue)
+            .Select(s => s.DeliveryOrderId!.Value)
+            .Distinct()
+            .ToList();
+        if (orderIds.Count == 0)
+            return;
+
+        var orders = await db.DeliveryOrders
+            .Include(o => o.Assignment)
+            .Where(o => orderIds.Contains(o.Id))
+            .ToListAsync(ct);
+
+        foreach (var order in orders)
+        {
+            if (order.Status is DeliveryOrderStatus.Delivered
+                or DeliveryOrderStatus.Failed
+                or DeliveryOrderStatus.Cancelled)
+                continue;
+
+            var previousStatus = order.Status;
+            var hadAssignment = order.Assignment is not null;
+
+            if (order.Assignment is not null)
+            {
+                db.DeliveryAssignments.Remove(order.Assignment);
+                order.Assignment = null;
+            }
+
+            if (order.Status != DeliveryOrderStatus.Created)
+                order.Status = DeliveryOrderStatus.Created;
+
+            if (!hadAssignment && previousStatus == DeliveryOrderStatus.Created)
+                continue;
+
+            try
+            {
+                await RecordDeliveryEventAsync(
+                    route.TenantId,
+                    DeliveryEventTypes.OrderStatusChanged,
+                    orderId: order.Id,
+                    routeId: route.Id,
+                    customerId: order.CustomerId,
+                    customerLabel: order.RecipientName,
+                    narrative: $"Order released from cancelled route {route.Name}; returned to ready.",
+                    context: new Dictionary<string, object?>
+                    {
+                        ["status"] = order.Status.ToString(),
+                        ["previousStatus"] = previousStatus.ToString()
+                    },
+                    ct: ct);
+            }
+            catch
+            {
+                // Order release is persisted; event logging is best-effort.
+            }
+        }
+    }
+
     private async Task MarkRouteOrdersInTransitOnStartAsync(DeliveryRoute route, CancellationToken ct)
     {
         await SyncRouteOrderAssignmentsAsync(route, ct, recordEvents: true);
 
         GeoPoint? depotPoint = null;
         if (!string.IsNullOrWhiteSpace(route.DepotAddress))
-            depotPoint = await orderGeocoding.GeocodeAddressAsync(route.DepotAddress, ct);
+            depotPoint = (await orderGeocoding.GeocodeAddressAsync(route.DepotAddress, route.TenantId, ct))?.ToPoint();
 
         var orderIds = route.Stops
             .Where(s => s.DeliveryOrderId.HasValue)
@@ -1275,6 +1501,8 @@ public class DeliveryService(
         var query = db.DeliveryRoutes.AsQueryable();
         if (!currentUser.IsPlatformAdmin && currentUser.TenantId.HasValue)
             query = query.Where(r => r.TenantId == currentUser.TenantId.Value);
+        if (currentUser.IsDriver && currentUser.DriverId.HasValue)
+            query = query.Where(r => r.DriverId == currentUser.DriverId.Value);
         return query;
     }
 
@@ -1363,38 +1591,41 @@ public class DeliveryService(
             and not DeliveryOrderStatus.Cancelled
             and not DeliveryOrderStatus.Failed;
 
+    private static bool AddressesEqual(string? left, string? right) =>
+        string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolveExternalRef(string? requestRef, string? customerRef)
+    {
+        if (!string.IsNullOrWhiteSpace(requestRef))
+            return requestRef.Trim();
+        if (!string.IsNullOrWhiteSpace(customerRef))
+            return customerRef.Trim();
+        return null;
+    }
+
     private static bool NeedsGeocode(DeliveryOrder order) =>
         !order.PickupLatitude.HasValue || !order.PickupLongitude.HasValue
         || !order.DeliveryLatitude.HasValue || !order.DeliveryLongitude.HasValue;
 
-    private async Task<bool> NeedsCoordinateAttentionAsync(DeliveryOrder order, CancellationToken ct) =>
-        NeedsGeocode(order)
-        || await orderGeocoding.HasLowQualityGeocodeAsync(order.PickupAddress, ct)
-        || await orderGeocoding.HasLowQualityGeocodeAsync(order.DeliveryAddress, ct)
-        || await orderGeocoding.CoordinatesOutOfSyncWithCacheAsync(
-            order.PickupAddress, order.PickupLatitude, order.PickupLongitude, ct)
-        || await orderGeocoding.CoordinatesOutOfSyncWithCacheAsync(
-            order.DeliveryAddress, order.DeliveryLatitude, order.DeliveryLongitude, ct);
-
-    private async Task<bool> BackfillMissingCoordinatesAsync(IReadOnlyList<DeliveryOrder> orders, CancellationToken ct)
+    /// <summary>
+    /// Fills in lat/lng only when missing. Does not call external geocoders to upgrade cached coordinates
+    /// (that belongs on create/update and route planning, not on read paths).
+    /// </summary>
+    private async Task BackfillMissingCoordinatesOnlyAsync(IReadOnlyList<Guid> orderIds, CancellationToken ct)
     {
-        var ids = new List<Guid>();
-        foreach (var order in orders)
-        {
-            if (await NeedsCoordinateAttentionAsync(order, ct))
-                ids.Add(order.Id);
-        }
-
-        if (ids.Count == 0) return false;
+        if (orderIds.Count == 0) return;
 
         var tracked = await db.DeliveryOrders
-            .Where(o => ids.Contains(o.Id))
+            .Where(o => orderIds.Contains(o.Id))
             .ToListAsync(ct);
 
         foreach (var order in tracked)
-            await orderGeocoding.EnsureOrderCoordinatesAsync(order, ct, upgradeDeterministic: true);
+        {
+            if (!NeedsGeocode(order) && !await orderGeocoding.HasStaleOrderGeocodeAsync(order, ct))
+                continue;
 
-        return true;
+            await orderGeocoding.EnsureOrderCoordinatesAsync(order, ct, upgradeDeterministic: false);
+        }
     }
 
     private readonly record struct VehicleDisplayInfo(string VehicleNumber, string LicensePlate);
@@ -1424,7 +1655,8 @@ public class DeliveryService(
         string? vehicleNumber,
         string? licensePlate,
         string? driverName,
-        IReadOnlyDictionary<string, string>? geocodeSources = null) =>
+        IReadOnlyDictionary<string, string>? geocodeSources = null,
+        string? fixedRouteTemplateName = null) =>
         new(
             order.Id,
             order.TenantId,
@@ -1440,6 +1672,9 @@ public class DeliveryService(
             order.DeliveryLongitude,
             geocodeSources is null ? null : orderGeocoding.ResolveCachedSource(order.PickupAddress, geocodeSources),
             geocodeSources is null ? null : orderGeocoding.ResolveCachedSource(order.DeliveryAddress, geocodeSources),
+            order.PickupFormattedAddress,
+            order.DeliveryFormattedAddress,
+            order.ExternalRef,
             order.Assignment is null ? null : new DeliveryAssignmentDto(
                 order.Assignment.Id,
                 order.Assignment.VehicleId,
@@ -1449,7 +1684,23 @@ public class DeliveryService(
                 order.Assignment.DriverId,
                 driverName,
                 order.Assignment.AssignedAt),
-            order.CreatedAt);
+            order.CreatedAt,
+            order.FixedRouteTemplateId,
+            fixedRouteTemplateName,
+            order.HeldUntil?.ToString("yyyy-MM-dd"));
+
+    private async Task<IReadOnlyDictionary<Guid, string>> FixedRouteTemplateNamesAsync(
+        IEnumerable<Guid> templateIds,
+        CancellationToken ct)
+    {
+        var ids = templateIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        return await db.FixedRouteTemplates.AsNoTracking()
+            .Where(t => ids.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+    }
 
     private static DeliveryRouteDto MapRouteSummary(
         DeliveryRoute route,
@@ -1500,7 +1751,7 @@ public class DeliveryService(
 
         GeoPoint? depotPoint = null;
         if (!string.IsNullOrWhiteSpace(route.DepotAddress))
-            depotPoint = await orderGeocoding.GeocodeAddressAsync(route.DepotAddress, ct);
+            depotPoint = (await orderGeocoding.GeocodeAddressAsync(route.DepotAddress, route.TenantId, ct))?.ToPoint();
 
         var sharedHints = AddressGeocodeHints.Empty;
         foreach (var order in orders.Values)
@@ -1511,7 +1762,7 @@ public class DeliveryService(
         {
             if (!CountsAsOperationalStop(stop, route.DepotAddress, depotPoint))
                 continue;
-            stops.Add(await MapStopAsync(stop, orders, depotPoint, sharedHints, ct));
+            stops.Add(await MapStopAsync(stop, orders, depotPoint, sharedHints, route.TenantId, ct));
         }
 
         // Preserve visit order for drive-time estimates (do not re-optimize on read).
@@ -1633,6 +1884,7 @@ public class DeliveryService(
         IReadOnlyDictionary<Guid, DeliveryOrder> orders,
         GeoPoint? depotPoint,
         AddressGeocodeHints sharedHints,
+        Guid tenantId,
         CancellationToken ct)
     {
         decimal? latitude = null;
@@ -1660,7 +1912,7 @@ public class DeliveryService(
         if (!latitude.HasValue || !longitude.HasValue)
         {
             var hints = AddressGeocodeHints.Merge(sharedHints, AddressGeocodeHints.Parse(stop.Address));
-            var point = await orderGeocoding.GeocodeAddressAsync(stop.Address, ct, hints);
+            var point = await orderGeocoding.GeocodeAddressAsync(stop.Address, tenantId, ct, hints);
             if (point.HasValue)
             {
                 latitude = point.Value.Latitude;

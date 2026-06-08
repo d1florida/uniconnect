@@ -20,8 +20,11 @@ import { DeliveryFleetMapPage } from './modules/delivery/pages/DeliveryFleetMapP
 import { DeliveryRoutesPage } from './modules/delivery/pages/DeliveryRoutesPage';
 import { DeliveryRouteDetailPage } from './modules/delivery/pages/DeliveryRouteDetailPage';
 import { DeliveryPlanPage } from './modules/delivery/pages/DeliveryPlanPage';
+import { DeliveryDriverCalendarPage } from './modules/delivery/pages/DeliveryDriverCalendarPage';
 import { DeliveryDriversPage } from './modules/delivery/pages/DeliveryDriversPage';
 import { DeliveryDepotsPage } from './modules/delivery/pages/DeliveryDepotsPage';
+import { DeliveryCustomersPage } from './modules/delivery/pages/DeliveryCustomersPage';
+import { DeliveryFixedRoutesPage } from './modules/delivery/pages/DeliveryFixedRoutesPage';
 import { DeliveryVehiclesPage } from './modules/delivery/pages/DeliveryVehiclesPage';
 import { InsightsDashboardPage } from './modules/insights/pages/InsightsDashboardPage';
 import { InsightsSubjectPage } from './modules/insights/pages/InsightsSubjectPage';
@@ -97,7 +100,10 @@ function App() {
           <Route path="delivery/fleets/:fleetId/map" element={<DeliveryFleetMapPage />} />
           <Route path="delivery/fleets/:fleetId/routes" element={<DeliveryRoutesPage />} />
           <Route path="delivery/fleets/:fleetId/drivers" element={<DeliveryDriversPage />} />
+          <Route path="delivery/fleets/:fleetId/driver-calendar" element={<DeliveryDriverCalendarPage />} />
           <Route path="delivery/fleets/:fleetId/depots" element={<DeliveryDepotsPage />} />
+          <Route path="delivery/fleets/:fleetId/customers" element={<DeliveryCustomersPage />} />
+          <Route path="delivery/fleets/:fleetId/fixed-routes" element={<DeliveryFixedRoutesPage />} />
           <Route path="delivery/fleets/:fleetId/vehicles" element={<DeliveryVehiclesPage />} />
           <Route path="delivery/routes/:routeId" element={<DeliveryRouteDetailPage />} />
           <Route path="delivery/orders/:orderId" element={<DeliveryOrderDetailPage />} />

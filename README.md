@@ -68,6 +68,7 @@ Web: http://localhost:5173 — you will be redirected to **Sign in**.
 | `av@demo.local` | Robo-Taxi (Demo AV Fleet) |
 | `delivery@demo.local` | Delivery admin (Demo Delivery Fleet) |
 | `delivery.ops@demo.local` | Delivery operator (same tenant, no Settings admin) |
+| `alex.driver@demo.local` | Delivery driver (Alex Driver — routes + calendar only) |
 | `admin@demo.local` | Platform admin (all products) |
 
 ## Module map
@@ -105,18 +106,19 @@ Development seed includes:
 
 - **Demo General Fleet** — conventional vehicles, maintenance, GPS pings
 - **Demo AV Fleet** — robo-taxi units with operational states
-- **Demo Delivery Fleet** — delivery orders, conventional + AV delivery van
+- **Demo Delivery Fleet** — 25 Tampa Bay depot-pickup orders (Tampa, St. Pete, Clearwater, Lakeland), conventional + AV delivery van
 
 ## Current app features
 
 - JWT auth with **tenant-scoped** data access (each operator sees only their tenant)
 - **Multi-user tenants** — admins invite team members with per-user product access (`User.ModuleAccess ∩ Tenant.Modules`)
-- **Route planning** — greedy multi-vehicle plan proposals (requires `RoutePlanning` module)
+- **Route planning** — Clarke–Wright multi-vehicle assignment, 2-opt stop sequencing, OSRM table matrix when configured (requires `RoutePlanning` module); tenant **planning rules** (markdown → compiled policy) with optional AI compile/explain
 - **Insights** — operational event log, driver/vehicle/customer/planner analytics, LLM-ready JSON reports
-- **Tenant roles** — `Admin` (org, team, API keys) vs `Operator` (products only)
+- **Tenant roles** — `Admin` (org, team, API keys), `Operator` (dispatch/products), `Driver` (own routes + calendar + PTO requests)
 - Log maintenance from the vehicle detail page
 - Create delivery orders from the UI
 - Tenant API keys in **Settings** for partner integrations
+- Per-tenant **geocoding provider** (US Census, OpenStreetMap, or Google Maps with encrypted API key) in **Settings → Geocoding** (tenant admin)
 - Partner delivery API (`X-Api-Key`): create and track orders
 - **Fleet assets** — shared `Vehicles` table with `AssetCategory` (tractor, trailer, light vehicle, etc.) and tenant-unique **vehicle ID** (`VehicleNumber`). Create/edit under General Fleet → **Assets**; Delivery and Robo-Taxi list the same records.
 
@@ -138,8 +140,16 @@ Demo partner key (delivery tenant): `uc_live_DemoDeliveryPartner0123456`
 |--------|-------|---------|
 | `GET` | `/api/tenants/me/users` | List tenant users |
 | `POST` | `/api/tenants/me/users` | Invite user (email, role, modules, password) |
-| `PATCH` | `/api/tenants/me/users/{id}` | Update role, modules, or active status |
+| `PATCH` | `/api/tenants/me/users/{id}` | Update display name, email, password, role, modules, or active status |
+| `PATCH` | `/api/tenants/me/admin` | Update your own display name, email, or password |
 | `DELETE` | `/api/tenants/me/users/{id}` | Remove user |
+| `GET` | `/api/tenants/me/geocoding` | Geocoding provider settings (tenant admin) |
+| `PUT` | `/api/tenants/me/geocoding` | Set provider (US Census, OpenStreetMap, or Google Maps + API key) |
+| `POST` | `/api/tenants/me/geocoding/test` | Test geocoding with a sample address |
+| `GET` | `/api/tenants/me/planning-rules` | Tenant route planning rules (markdown + compiled policy) |
+| `PUT` | `/api/tenants/me/planning-rules` | Save rules (auto-compiles on save) |
+| `POST` | `/api/tenants/me/planning-rules/compile` | Re-compile rules (optional AI when `PlanningRules:OpenAiApiKey` is set) |
+| `POST` | `/api/route-planning/plan-runs/{id}/explain` | Plain-English plan summary (optional AI) |
 
 ## Phase 2 (next)
 

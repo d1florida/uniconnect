@@ -13,6 +13,8 @@ export interface UserProfile {
   modules: FleetModule[];
   tenantRole?: TenantRole;
   isTenantAdmin: boolean;
+  isDriver: boolean;
+  driverId?: string;
   isPlatformAdmin: boolean;
 }
 
@@ -85,6 +87,11 @@ export function homePathForUser(user: UserProfile): string {
   if (user.isPlatformAdmin) return '/tenants';
   if (hasModule(user.modules, 'General')) return '/';
   if (hasModule(user.modules, 'RoboTaxi')) return '/robo-taxis';
-  if (hasModule(user.modules, 'Delivery')) return '/delivery';
+  if (hasModule(user.modules, 'Delivery')) {
+    if (user.isDriver && user.fleetId) {
+      return `/delivery/fleets/${user.fleetId}/driver-calendar`;
+    }
+    return '/delivery';
+  }
   return '/';
 }

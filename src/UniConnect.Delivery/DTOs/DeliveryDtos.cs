@@ -30,22 +30,45 @@ public record DeliveryOrderDto(
     decimal? DeliveryLongitude,
     string? PickupGeocodeSource,
     string? DeliveryGeocodeSource,
+    string? PickupFormattedAddress,
+    string? DeliveryFormattedAddress,
+    string? ExternalRef,
     DeliveryAssignmentDto? Assignment,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    Guid? FixedRouteTemplateId = null,
+    string? FixedRouteTemplateName = null,
+    string? HeldUntil = null);
 
 public record CreateDeliveryOrderRequest(
     string PickupAddress,
     string DeliveryAddress,
     string RecipientName,
     string RecipientPhone,
-    string ParcelDescription);
+    string ParcelDescription,
+    Guid? CustomerId = null,
+    string? ExternalRef = null);
 
 public record UpdateDeliveryOrderRequest(
     string PickupAddress,
     string DeliveryAddress,
     string RecipientName,
     string RecipientPhone,
-    string ParcelDescription);
+    string ParcelDescription,
+    string? ExternalRef = null);
+
+public record CheckAddressesRequest(string PickupAddress, string DeliveryAddress);
+
+public record AddressCheckResultDto(
+    string InputAddress,
+    string SuggestedAddress,
+    string? StandardizedAddress,
+    decimal? Latitude,
+    decimal? Longitude,
+    string? GeocodeSource,
+    bool Resolved,
+    string Message);
+
+public record CheckAddressesResultDto(AddressCheckResultDto Pickup, AddressCheckResultDto Delivery);
 
 public record AssignDeliveryRequest(Guid VehicleId, AutomationMode AutomationMode, Guid? DriverId = null);
 
@@ -88,6 +111,7 @@ public record DeliveryDashboardDto(
     int ActiveRoutes,
     int PlannedRoutes,
     int OrdersReadyToPlan,
+    int OrdersHeldForFixedRoutes,
     int DraftRoutes,
     int RoutesNeedingDrivers);
 

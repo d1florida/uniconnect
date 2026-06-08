@@ -53,6 +53,8 @@ public readonly record struct AddressGeocodeHints(string? City, string? State, s
                 continue;
             if (IsStreetToken(token))
                 continue;
+            if (token.Length == 2 && token.All(char.IsLetter))
+                continue;
             return TitleCase(token);
         }
 

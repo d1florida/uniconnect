@@ -15,4 +15,6 @@ public record UserProfileDto(
     IReadOnlyList<ProductModule> Modules,
     bool IsPlatformAdmin,
     TenantRole? TenantRole,
-    bool IsTenantAdmin);
+    bool IsTenantAdmin,
+    Guid? DriverId = null,
+    bool IsDriver = false);

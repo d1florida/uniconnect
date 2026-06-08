@@ -10,7 +10,14 @@ public interface IOperationalEventRecorder
 
 public interface ICustomerDirectory
 {
-    Task<Customer> GetOrCreateAsync(Guid tenantId, string name, string? phone, CancellationToken ct = default);
+    Task<Customer> GetOrCreateAsync(Guid tenantId, string name, string? phone, string? deliveryAddress = null, CancellationToken ct = default);
+    Task<IReadOnlyList<CustomerDto>> GetCustomersAsync(Guid tenantId, bool includeInactive = false, CancellationToken ct = default);
+    Task<CustomerDto?> GetCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
+    Task<CustomerDto> CreateCustomerAsync(Guid tenantId, CreateCustomerRequest request, CancellationToken ct = default);
+    Task<CustomerDto> UpdateCustomerAsync(Guid tenantId, Guid customerId, UpdateCustomerRequest request, CancellationToken ct = default);
+    Task DeleteCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
+    Task SyncDeliveryAddressAsync(Guid tenantId, Guid customerId, string deliveryAddress, CancellationToken ct = default);
+    Task SyncExternalRefAsync(Guid tenantId, Guid customerId, string? externalRef, CancellationToken ct = default);
 }
 
 public interface IDriverDirectory
@@ -20,6 +27,70 @@ public interface IDriverDirectory
     Task<DriverDto> CreateDriverAsync(Guid tenantId, CreateDriverRequest request, CancellationToken ct = default);
     Task<DriverDto> UpdateDriverAsync(Guid tenantId, Guid driverId, UpdateDriverRequest request, CancellationToken ct = default);
     Task DeleteDriverAsync(Guid tenantId, Guid driverId, CancellationToken ct = default);
+    Task<IReadOnlyList<DriverWorkPatternDayDto>> GetWorkPatternAsync(Guid tenantId, Guid driverId, CancellationToken ct = default);
+    Task<IReadOnlyList<DriverWorkPatternDayDto>> UpdateWorkPatternAsync(
+        Guid tenantId,
+        Guid driverId,
+        IReadOnlyList<UpdateDriverWorkPatternDayRequest> pattern,
+        CancellationToken ct = default);
+    Task<IReadOnlyList<ResolvedDriverScheduleDto>> GetResolvedScheduleAsync(
+        Guid tenantId,
+        DateOnly date,
+        CancellationToken ct = default);
+
+    Task<DriverCalendarDto> GetDriverCalendarAsync(
+        Guid tenantId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default);
+
+    Task<DriverScheduleExceptionDto> UpsertScheduleExceptionAsync(
+        Guid tenantId,
+        Guid driverId,
+        UpsertDriverScheduleExceptionRequest request,
+        CancellationToken ct = default);
+
+    Task DeleteScheduleExceptionAsync(
+        Guid tenantId,
+        Guid driverId,
+        DateOnly date,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<DriverScheduleExceptionDto>> BulkUpsertScheduleExceptionsAsync(
+        Guid tenantId,
+        Guid driverId,
+        BulkUpsertDriverScheduleExceptionRequest request,
+        CancellationToken ct = default);
+}
+
+public interface IDriverScheduleRequestService
+{
+    Task<IReadOnlyList<DriverScheduleRequestDto>> GetRequestsAsync(
+        Guid tenantId,
+        string? status = null,
+        CancellationToken ct = default);
+
+    Task<DriverScheduleRequestDto> CreateRequestAsync(
+        Guid tenantId,
+        CreateDriverScheduleRequestRequest request,
+        CancellationToken ct = default);
+
+    Task<DriverScheduleRequestDto> ApproveRequestAsync(
+        Guid tenantId,
+        Guid requestId,
+        ReviewDriverScheduleRequestRequest? review = null,
+        CancellationToken ct = default);
+
+    Task<DriverScheduleRequestDto> DenyRequestAsync(
+        Guid tenantId,
+        Guid requestId,
+        ReviewDriverScheduleRequestRequest? review = null,
+        CancellationToken ct = default);
+
+    Task CancelRequestAsync(
+        Guid tenantId,
+        Guid requestId,
+        CancellationToken ct = default);
 }
 
 public interface IInsightsService

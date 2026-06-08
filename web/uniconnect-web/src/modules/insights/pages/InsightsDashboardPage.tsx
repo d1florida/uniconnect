@@ -144,6 +144,12 @@ export function InsightsDashboardPage() {
           {customers.map((c) => (
             <li key={c.id}>
               <Link to={`/insights/customers/${c.id}`}>{c.name}</Link>
+              {(c.deliveryHours || c.deliveryAddress) && (
+                <span className="muted">
+                  {' — '}
+                  {c.deliveryHours ?? c.deliveryAddress}
+                </span>
+              )}
             </li>
           ))}
         </ul>

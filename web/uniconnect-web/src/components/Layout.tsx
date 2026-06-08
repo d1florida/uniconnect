@@ -6,6 +6,7 @@ import '../App.css';
 export function Layout() {
   const { user, logout } = useAuth();
   const fleetId = user?.fleetId;
+  const isDriver = user?.isDriver ?? false;
 
   return (
     <div className="layout">
@@ -45,15 +46,22 @@ export function Layout() {
               <NavLink to="/delivery">Delivery</NavLink>
               {fleetId && hasModule(user?.modules, 'Delivery') && (
                 <>
-                  <NavLink to={`/delivery/fleets/${fleetId}/orders`}>Orders</NavLink>
+                  {!isDriver && (
+                    <>
+                      <NavLink to={`/delivery/fleets/${fleetId}/orders`}>Orders</NavLink>
+                      <NavLink to={`/delivery/fleets/${fleetId}/drivers`}>Drivers</NavLink>
+                      <NavLink to={`/delivery/fleets/${fleetId}/vehicles`}>Assets</NavLink>
+                      <NavLink to={`/delivery/fleets/${fleetId}/depots`}>Depots</NavLink>
+                      <NavLink to={`/delivery/fleets/${fleetId}/customers`}>Customers</NavLink>
+                      <NavLink to={`/delivery/fleets/${fleetId}/fixed-routes`}>Fixed routes</NavLink>
+                      <NavLink to={`/delivery/fleets/${fleetId}/map`}>Delivery map</NavLink>
+                    </>
+                  )}
                   <NavLink to={`/delivery/fleets/${fleetId}/routes`}>Routes</NavLink>
-                  <NavLink to={`/delivery/fleets/${fleetId}/drivers`}>Drivers</NavLink>
-                  <NavLink to={`/delivery/fleets/${fleetId}/vehicles`}>Assets</NavLink>
-                  <NavLink to={`/delivery/fleets/${fleetId}/depots`}>Depots</NavLink>
-                  <NavLink to={`/delivery/fleets/${fleetId}/map`}>Delivery map</NavLink>
+                  <NavLink to={`/delivery/fleets/${fleetId}/driver-calendar`}>Calendar</NavLink>
                 </>
               )}
-              {fleetId && hasModule(user?.modules, 'RoutePlanning') && (
+              {fleetId && hasModule(user?.modules, 'RoutePlanning') && !isDriver && (
                 <NavLink to={`/delivery/fleets/${fleetId}/plan`}>Plan routes</NavLink>
               )}
             </>
@@ -61,7 +69,7 @@ export function Layout() {
           {hasModule(user?.modules, 'Insights') && (
             <NavLink to="/insights">Insights</NavLink>
           )}
-          {fleetId && (
+          {fleetId && !isDriver && (
             <NavLink to="/settings">Settings</NavLink>
           )}
         </nav>

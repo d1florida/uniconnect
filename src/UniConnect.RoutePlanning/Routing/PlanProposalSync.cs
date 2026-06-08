@@ -1,5 +1,6 @@
 using System.Text.Json;
 using UniConnect.RoutePlanning.DTOs;
+using UniConnect.RoutePlanning.Models;
 
 namespace UniConnect.RoutePlanning.Routing;
 
@@ -9,7 +10,8 @@ public static class PlanProposalSync
 
     public static IReadOnlyList<PlannedRouteProposalDto> RefreshFromOrders(
         IReadOnlyList<PlannedRouteProposalDto> proposals,
-        IReadOnlyDictionary<Guid, OrderStopSnapshot> orders)
+        IReadOnlyDictionary<Guid, OrderStopSnapshot> orders,
+        IReadOnlyDictionary<Guid, CustomerDeliveryWindow?>? deliveryWindows = null)
     {
         if (proposals.Count == 0 || orders.Count == 0)
             return proposals;
@@ -17,7 +19,7 @@ public static class PlanProposalSync
         return proposals
             .Select(proposal => proposal with
             {
-                Stops = proposal.Stops.Select(stop => RefreshStop(stop, orders)).ToList(),
+                Stops = proposal.Stops.Select(stop => RefreshStop(stop, orders, deliveryWindows)).ToList(),
             })
             .ToList();
     }
@@ -42,10 +44,17 @@ public static class PlanProposalSync
 
     private static PlannedStopDto RefreshStop(
         PlannedStopDto stop,
-        IReadOnlyDictionary<Guid, OrderStopSnapshot> orders)
+        IReadOnlyDictionary<Guid, OrderStopSnapshot> orders,
+        IReadOnlyDictionary<Guid, CustomerDeliveryWindow?>? deliveryWindows)
     {
         if (!stop.OrderId.HasValue || !orders.TryGetValue(stop.OrderId.Value, out var order))
             return stop;
+
+        CustomerDeliveryWindow? window = null;
+        if (stop.StopType == "Dropoff"
+            && deliveryWindows is not null
+            && deliveryWindows.TryGetValue(stop.OrderId.Value, out var orderWindow))
+            window = orderWindow;
 
         return stop.StopType switch
         {
@@ -64,6 +73,10 @@ public static class PlanProposalSync
                 ParcelDescription = order.ParcelDescription,
                 Latitude = order.DeliveryLatitude,
                 Longitude = order.DeliveryLongitude,
+                DeliveryOpenStart = CustomerDeliveryWindow.Format(window?.OpenStart),
+                DeliveryOpenEnd = CustomerDeliveryWindow.Format(window?.OpenEnd),
+                NoDeliveryStart = CustomerDeliveryWindow.Format(window?.NoDeliveryStart),
+                NoDeliveryEnd = CustomerDeliveryWindow.Format(window?.NoDeliveryEnd),
             },
             _ => stop,
         };

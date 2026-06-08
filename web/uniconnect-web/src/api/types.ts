@@ -44,7 +44,7 @@ export interface PasswordPolicyDto {
   requireNonAlphanumeric: boolean;
 }
 
-export type TenantRole = 'Admin' | 'Operator';
+export type TenantRole = 'Admin' | 'Operator' | 'Driver';
 
 export interface MyTenantProfileDto {
   tenant: FleetDto;
@@ -61,6 +61,8 @@ export interface TenantUserDto {
   role: TenantRole;
   moduleAccess: FleetModule[];
   isActive: boolean;
+  linkedDriverId?: string;
+  linkedDriverName?: string;
 }
 
 export interface FleetDashboardDto {
@@ -175,6 +177,22 @@ export interface RoboTaxiDashboardDto {
   staleLocation: number;
 }
 
+export interface AddressCheckResultDto {
+  inputAddress: string;
+  suggestedAddress: string;
+  standardizedAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  geocodeSource?: string;
+  resolved: boolean;
+  message: string;
+}
+
+export interface CheckAddressesResultDto {
+  pickup: AddressCheckResultDto;
+  delivery: AddressCheckResultDto;
+}
+
 export interface DeliveryOrderDto {
   id: string;
   tenantId: string;
@@ -190,6 +208,9 @@ export interface DeliveryOrderDto {
   deliveryLongitude?: number;
   pickupGeocodeSource?: string;
   deliveryGeocodeSource?: string;
+  pickupFormattedAddress?: string;
+  deliveryFormattedAddress?: string;
+  externalRef?: string;
   assignment?: {
     id: string;
     vehicleId: string;
@@ -200,6 +221,9 @@ export interface DeliveryOrderDto {
     driverName?: string;
     assignedAt: string;
   };
+  fixedRouteTemplateId?: string;
+  fixedRouteTemplateName?: string;
+  heldUntil?: string;
   createdAt: string;
 }
 
@@ -226,8 +250,38 @@ export interface DeliveryDashboardDto {
   activeRoutes: number;
   plannedRoutes: number;
   ordersReadyToPlan: number;
+  ordersHeldForFixedRoutes: number;
   draftRoutes: number;
   routesNeedingDrivers: number;
+}
+
+export interface DeliveryZoneDto {
+  id: string;
+  tenantId: string;
+  name: string;
+  matchType: string;
+  isActive: boolean;
+  customerCount: number;
+  createdAt: string;
+}
+
+export interface FixedRouteTemplateDto {
+  id: string;
+  tenantId: string;
+  name: string;
+  deliveryZoneId: string;
+  deliveryZoneName: string;
+  daysOfWeek: string[];
+  daysOfWeekLabel: string;
+  depotId: string;
+  depotName?: string;
+  defaultVehicleId?: string;
+  defaultDriverId?: string;
+  isActive: boolean;
+  heldOrderCount: number;
+  dueOrderCount: number;
+  nextRouteDate?: string;
+  createdAt: string;
 }
 
 export interface DeliveryRouteStopDto {
@@ -304,6 +358,43 @@ export interface TenantApiKeyDto {
 export interface CreateTenantApiKeyResponse {
   key: TenantApiKeyDto;
   secret: string;
+}
+
+export type GeocodingProvider = 'UsCensus' | 'OpenStreetMap' | 'GoogleMaps';
+
+export interface TenantGeocodingSettingsDto {
+  provider: GeocodingProvider;
+  allowPostalFallback: boolean;
+  nominatimUserAgent: string;
+  nominatimBaseUrl?: string | null;
+  googleApiKeyConfigured: boolean;
+  googleApiKeyHint?: string | null;
+  googleApiKeyDecryptFailed: boolean;
+  isConfigured: boolean;
+  updatedAt?: string | null;
+}
+
+export interface UpdateTenantGeocodingSettingsRequest {
+  provider: GeocodingProvider;
+  allowPostalFallback: boolean;
+  nominatimUserAgent?: string | null;
+  nominatimBaseUrl?: string | null;
+  /** Omit to keep existing key; empty string clears; non-empty sets a new key. */
+  googleApiKey?: string | null;
+}
+
+export interface TestTenantGeocodingRequest {
+  address: string;
+}
+
+export interface TestTenantGeocodingResultDto {
+  address: string;
+  success: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  standardizedAddress?: string | null;
+  source?: string | null;
+  message: string;
 }
 
 export interface InsightsKpiDto {
@@ -402,6 +493,19 @@ export interface CustomerDto {
   name: string;
   phone?: string;
   externalRef?: string;
+  deliveryAddress?: string;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
+  deliveryHours?: string;
+  deliveryWindowStart?: string;
+  deliveryWindowEnd?: string;
+  noDeliveryStart?: string;
+  noDeliveryEnd?: string;
+  deliveryZoneId?: string;
+  deliveryZoneName?: string;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface DriverDto {
@@ -410,7 +514,140 @@ export interface DriverDto {
   userId?: string;
   linkedUserName?: string;
   isActive: boolean;
+  shiftStartTime: string;
+  shiftEndTime: string;
+  lunchMinutes: number;
+  breakMinutes: number;
+  availableWorkMinutes: number;
+  maxRouteMinutes?: number;
+  returnByTime?: string;
   createdAt: string;
+}
+
+export interface DriverWorkPatternDayDto {
+  dayOfWeek: number;
+  isWorkingDay: boolean;
+  shiftStartTime: string;
+  shiftEndTime: string;
+  lunchMinutes: number;
+  breakMinutes: number;
+  availableWorkMinutes: number;
+  maxRouteMinutes?: number;
+  returnByTime?: string;
+}
+
+export interface DriverCalendarFixedRouteDto {
+  templateId: string;
+  name: string;
+}
+
+export interface DriverCalendarAssignedRouteDto {
+  routeId: string;
+  name: string;
+  status: string;
+  stopCount: number;
+}
+
+export interface DriverCalendarDayDto {
+  date: string;
+  isWorking: boolean;
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  availableWorkMinutes: number;
+  maxRouteMinutes?: number;
+  returnByTime?: string;
+  source: 'pattern' | 'exception' | 'profile' | string;
+  hasException: boolean;
+  scheduleExceptionId?: string;
+  note?: string;
+  offBlockStartTime?: string;
+  offBlockEndTime?: string;
+  fixedRoutes: DriverCalendarFixedRouteDto[];
+  assignedRoutes: DriverCalendarAssignedRouteDto[];
+}
+
+export interface DriverCalendarRowDto {
+  driverId: string;
+  displayName: string;
+  isActive: boolean;
+  days: DriverCalendarDayDto[];
+}
+
+export interface DriverCalendarDto {
+  from: string;
+  to: string;
+  drivers: DriverCalendarRowDto[];
+}
+
+export interface UpsertDriverScheduleExceptionRequest {
+  date: string;
+  isWorking: boolean;
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  lunchMinutes?: number;
+  breakMinutes?: number;
+  maxRouteMinutes?: number;
+  returnByTime?: string;
+  offBlockStartTime?: string;
+  offBlockEndTime?: string;
+  note?: string;
+}
+
+export interface BulkUpsertDriverScheduleExceptionRequest {
+  from: string;
+  to: string;
+  isWorking: boolean;
+  note?: string;
+}
+
+export interface CreateDriverScheduleRequestRequest {
+  driverId: string;
+  fromDate: string;
+  toDate: string;
+  requestType: string;
+  note?: string;
+}
+
+export interface DriverScheduleRequestDto {
+  id: string;
+  driverId: string;
+  driverName: string;
+  fromDate: string;
+  toDate: string;
+  requestType: string;
+  status: string;
+  note?: string;
+  requestedByName: string;
+  createdAt: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+}
+
+export interface TenantDeliverySettingsDto {
+  allowMultipleRoutesPerDriverPerDay: boolean;
+  timeZoneId: string;
+  updatedAt?: string;
+}
+
+export interface TenantPlanningRulesDto {
+  markdown: string;
+  compiledPolicyJson?: string;
+  compiledAt?: string;
+  compileWarnings: string[];
+  updatedAt: string;
+}
+
+export interface CompileTenantPlanningRulesResultDto {
+  compiledPolicyJson?: string;
+  warnings: string[];
+  usedAi: boolean;
+}
+
+export interface PlanRunExplanationDto {
+  planRunId: string;
+  explanation: string;
+  usedAi: boolean;
 }
 
 export type RoutePlanRunStatus = 'Requested' | 'Completed' | 'Accepted' | 'Discarded' | 'Failed';
@@ -420,8 +657,17 @@ export interface PlanReadinessDto {
   plannableOrderCount: number;
   vehicleCount: number;
   activeVehicleCount: number;
+  driverCount: number;
+  activeDriverCount: number;
   canPlan: boolean;
   notes: string[];
+  windowedOrderCount?: number;
+  heldOrderCount?: number;
+  fixedRouteTemplateId?: string;
+  fixedRouteDueOrderCount?: number;
+  workingDriverCount?: number;
+  driversOffCount?: number;
+  scheduledDate?: string;
 }
 
 export interface PlannedStopDto {
@@ -433,6 +679,12 @@ export interface PlannedStopDto {
   parcelDescription?: string;
   latitude?: number;
   longitude?: number;
+  deliveryOpenStart?: string;
+  deliveryOpenEnd?: string;
+  noDeliveryStart?: string;
+  noDeliveryEnd?: string;
+  estimatedArrival?: string;
+  windowWarnings?: string[];
 }
 
 export interface PlannedRouteProposalDto {
@@ -440,6 +692,13 @@ export interface PlannedRouteProposalDto {
   vehicleLabel?: string;
   estimatedMinutes: number;
   stops: PlannedStopDto[];
+  driverId?: string;
+  driverLabel?: string;
+  shiftAvailableMinutes?: number;
+  shiftWindow?: string;
+  estimatedRouteStart?: string;
+  warnings?: string[];
+  windowViolationCount?: number;
 }
 
 export interface AcceptPlanResultDto {

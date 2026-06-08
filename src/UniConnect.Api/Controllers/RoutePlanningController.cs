@@ -34,10 +34,12 @@ public class RoutePlanningController(IRoutePlanningService routePlanning, ICurre
     public async Task<ActionResult<PlanReadinessDto>> GetPlanReadiness(
         Guid tenantId,
         [FromQuery] Guid? depotId,
+        [FromQuery] Guid? fixedRouteTemplateId,
+        [FromQuery] DateOnly? scheduledDate,
         CancellationToken ct)
     {
         currentUser.EnsureModules(ProductModule.Delivery, ProductModule.RoutePlanning);
-        return Ok(await routePlanning.GetPlanReadinessAsync(tenantId, depotId, ct));
+        return Ok(await routePlanning.GetPlanReadinessAsync(tenantId, depotId, fixedRouteTemplateId, scheduledDate, ct));
     }
 
     [HttpGet("plan-runs/{planRunId:guid}")]
@@ -76,5 +78,12 @@ public class RoutePlanningController(IRoutePlanningService routePlanning, ICurre
     {
         currentUser.EnsureModules(ProductModule.Delivery, ProductModule.RoutePlanning);
         return Ok(await routePlanning.OptimizeRouteSequenceAsync(routeId, request, ct));
+    }
+
+    [HttpPost("plan-runs/{planRunId:guid}/explain")]
+    public async Task<ActionResult<PlanRunExplanationDto>> ExplainPlanRun(Guid planRunId, CancellationToken ct)
+    {
+        currentUser.EnsureModules(ProductModule.Delivery, ProductModule.RoutePlanning);
+        return Ok(await routePlanning.ExplainPlanRunAsync(planRunId, ct));
     }
 }
